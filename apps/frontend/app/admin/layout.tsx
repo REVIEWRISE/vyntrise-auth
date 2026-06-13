@@ -15,6 +15,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!token) {
       router.push('/login');
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAuthenticated(true);
     }
   }, [router]);

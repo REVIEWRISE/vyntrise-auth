@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Mail } from 'lucide-react';
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<{totalUsers: number, pendingInvites: number} | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -20,8 +20,8 @@ export default function AdminDashboard() {
         
         const data = await res.json();
         setStats(data);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        setError((err as Error).message);
       }
     };
 

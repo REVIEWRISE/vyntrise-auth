@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string, email: string, role: string, accessCreatedAt: string }>>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -28,8 +28,8 @@ export default function AdminUsers() {
         
         const data = await res.json();
         setUsers(data);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        setError((err as Error).message);
       }
     };
 

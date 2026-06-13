@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
 export default function AdminInvites() {
-  const [invites, setInvites] = useState<any[]>([]);
+  const [invites, setInvites] = useState<Array<{ id: string, email: string, role: string, used: boolean, expiresAt: string }>>([]);
   const [error, setError] = useState('');
   
   // Form State
@@ -35,12 +35,13 @@ export default function AdminInvites() {
       
       const data = await res.json();
       setInvites(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchInvites();
   }, []);
 
@@ -68,8 +69,8 @@ export default function AdminInvites() {
       setEmail('');
       setRole('USER');
       fetchInvites();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setCreating(false);
     }
