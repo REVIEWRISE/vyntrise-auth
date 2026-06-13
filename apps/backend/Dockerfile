@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 
 # Install deps (production only)
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy source
 COPY src ./src
@@ -16,7 +16,7 @@ COPY tsconfig.json ./
 COPY prisma.config.ts ./
 
 # Compile TypeScript
-RUN npm install -D typescript ts-node @types/node && npx tsc --skipLibCheck
+RUN npm install -D typescript ts-node @types/node prisma && npx prisma generate && npx tsc --skipLibCheck
 
 # ── Stage 2: Production ─────────────────────────────────────────
 FROM node:20-alpine AS runner
