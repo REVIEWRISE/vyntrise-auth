@@ -1,0 +1,103 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('http://localhost:3010/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('accessToken', data.accessToken);
+        
+        const redirectUrl = searchParams.get('redirectUrl');
+        if (redirectUrl) {
+          const url = new URL(redirectUrl);
+          url.searchParams.append('token', data.accessToken);
+          window.location.href = url.toString();
+        } else {
+          router.push('/admin');
+        }
+      } else {
+        setError(data.message || 'Login failed');
+      }
+    } catch (err) {
+      setError('An error occurred during login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 dark">
+      <Card className="w-full max-w-md shadow-lg border-zinc-800 bg-zinc-900/50 backdrop-blur-xl">
+        <CardHeader className="space-y-1 text-center pb-8">
+          <CardTitle className="text-3xl font-bold tracking-tight text-zinc-50">
+            Sign in to Vyntrise
+          </CardTitle>
+          <CardDescription className="text-zinc-400">
+            Enter your email and password to access your dashboard
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-6 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-zinc-200">Email</Label>
+              <Input 
+                id="email" 
+                type="email" 
+                placeholder="you@example.com" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-zinc-200">Password</Label>
+              <Input 
+                id="password" 
+                type="password" 
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+              />
+            </div>
+            <Button type="submit" className="w-full mt-6 bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold" disabled={loading}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

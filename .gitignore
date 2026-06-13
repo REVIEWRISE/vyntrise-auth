@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+.env.staging
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Databases
+*.db
+dev.db
+
+# Prisma generated client
+src/generated/prisma
+
+# Misc
+.DS_Store
+*.log

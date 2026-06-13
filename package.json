@@ -1,0 +1,20 @@
+{
+  "name": "vyntrise-auth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vyntrise centralized authentication service — monorepo",
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:frontend": "npm run build --workspace=apps/frontend",
+    "build": "npm run build:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
