@@ -1,0 +1,66 @@
+services:
+  # ── PostgreSQL Database ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: vyntrise-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: vyntrise_auth
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vyntrise-auth-net
+
+  # ── Express Backend ──────────────────────────────────────────
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: vyntrise-auth-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/vyntrise_auth?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3010
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://auth.vyntrise.com}
+    ports:
+      - "3010:3010"
+    networks:
+      - vyntrise-auth-net
+
+  # ── Next.js Frontend ────────────────────────────────────────
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://auth.vyntrise.com/api}
+    container_name: vyntrise-auth-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://auth.vyntrise.com/api}
+    ports:
+      - "3002:3002"
+    networks:
+      - vyntrise-auth-net
+
+volumes:
+  postgres_data:
+
+networks:
+  vyntrise-auth-net:
+    driver: bridge
