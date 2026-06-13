@@ -20,7 +20,7 @@ export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunct
 
   if (token) {
 
-    jwt.verify(token, process.env.JWT_SECRET as string, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET as string, (err: any, user: any) => {
       if (err) {
         return res.status(403).json({ message: 'Forbidden or Token Expired' });
       }

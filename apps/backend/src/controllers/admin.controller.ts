@@ -38,7 +38,7 @@ export const getUsers = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const users = accessRecords.map(record => ({
+    const users = accessRecords.map((record: any) => ({
       ...record.user,
       role: record.role,
       accessCreatedAt: record.createdAt,
