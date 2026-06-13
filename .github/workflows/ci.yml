@@ -28,14 +28,14 @@ jobs:
           cache: npm
 
       - name: Install root deps
-        run: npm ci
+        run: npm install
 
       - name: Install backend deps
-        run: npm ci
+        run: npm install
         working-directory: apps/backend
 
       - name: Install frontend deps
-        run: npm ci
+        run: npm install
         working-directory: apps/frontend
 
       - name: Type-check backend
