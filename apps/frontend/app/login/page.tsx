@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -51,6 +52,47 @@ export default function LoginPage() {
   };
 
   return (
+    <>
+      {error && (
+        <div className="mb-6 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
+          {error}
+        </div>
+      )}
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-zinc-200">Email</Label>
+          <Input 
+            id="email" 
+            type="email" 
+            placeholder="you@example.com" 
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password" className="text-zinc-200">Password</Label>
+          <Input 
+            id="password" 
+            type="password" 
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+          />
+        </div>
+        <Button type="submit" className="w-full mt-6 bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold" disabled={loading}>
+          {loading ? 'Signing in...' : 'Sign In'}
+        </Button>
+      </form>
+    </>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 dark">
       <Card className="w-full max-w-md shadow-lg border-zinc-800 bg-zinc-900/50 backdrop-blur-xl">
         <CardHeader className="space-y-1 text-center pb-8">
@@ -62,42 +104,12 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {error && (
-            <div className="mb-6 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-zinc-200">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                placeholder="you@example.com" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-zinc-200">Password</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
-              />
-            </div>
-            <Button type="submit" className="w-full mt-6 bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
+          <Suspense fallback={<div className="flex justify-center py-4"><Loader2 className="w-6 h-6 animate-spin text-zinc-400" /></div>}>
+            <LoginForm />
+          </Suspense>
         </CardContent>
       </Card>
     </div>
   );
 }
+
