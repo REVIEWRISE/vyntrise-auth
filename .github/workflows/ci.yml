@@ -153,12 +153,7 @@ jobs:
             # Restart services
             docker compose up -d --remove-orphans
 
-            # Wait for backend to be healthy before running migrations
-            echo "Waiting for backend to be ready..."
-            sleep 15
-
-            # Run DB migrations
-            docker compose exec -T backend npx prisma migrate deploy
+            # Note: DB migrations run automatically on backend startup (see Dockerfile CMD)
 
             # Clean up old images
             docker image prune -f
