@@ -19,6 +19,10 @@ dev.db
 # Prisma generated client
 src/generated/prisma
 
+# SSH deploy keys — NEVER commit these
+deploy_key
+deploy_key.pub
+
 # Misc
 .DS_Store
 *.log
