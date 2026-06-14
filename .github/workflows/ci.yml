@@ -133,14 +133,29 @@ jobs:
             # Pull latest changes
             git pull origin master
 
+            # Write .env file with all secrets
+            cat > .env <<EOF
+            POSTGRES_USER=postgres
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            NODE_ENV=production
+            NEXT_PUBLIC_API_URL=https://auth.vyntrise.com/api
+            ALLOWED_ORIGINS=https://auth.vyntrise.com
+            EOF
+
             # Log in to GHCR
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull latest images
             docker compose pull
 
-            # Restart services with zero-downtime rolling update
+            # Restart services
             docker compose up -d --remove-orphans
+
+            # Wait for backend to be healthy before running migrations
+            echo "Waiting for backend to be ready..."
+            sleep 15
 
             # Run DB migrations
             docker compose exec -T backend npx prisma migrate deploy

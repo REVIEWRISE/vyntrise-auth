@@ -20,9 +20,7 @@ services:
 
   # ── Express Backend ──────────────────────────────────────────
   backend:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+    image: ghcr.io/reviewrise/vyntrise-auth-backend:latest
     container_name: vyntrise-auth-backend
     restart: unless-stopped
     depends_on:
@@ -42,11 +40,7 @@ services:
 
   # ── Next.js Frontend ────────────────────────────────────────
   frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://auth.vyntrise.com/api}
+    image: ghcr.io/reviewrise/vyntrise-auth-frontend:latest
     container_name: vyntrise-auth-frontend
     restart: unless-stopped
     depends_on:
