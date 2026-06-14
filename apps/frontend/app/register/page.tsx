@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -61,6 +61,47 @@ export default function RegisterPage() {
   };
 
   return (
+    <>
+      {error && <div className="error-message">{error}</div>}
+      {success && <div className="success-message">{success}</div>}
+
+      <form onSubmit={handleRegister}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="password">Create Password</label>
+          <input
+            id="password"
+            type="password"
+            className="form-input"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="form-group" style={{ marginBottom: '2rem' }}>
+          <label className="form-label" htmlFor="confirmPassword">Confirm Password</label>
+          <input
+            id="confirmPassword"
+            type="password"
+            className="form-input"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        <button type="submit" className="btn-primary" disabled={loading}>
+          {loading ? 'Creating Account...' : 'Complete Setup'}
+        </button>
+      </form>
+    </>
+  );
+}
+
+export default function RegisterPage() {
+  return (
     <div className="auth-container">
       <div className="glass-morphism auth-card">
         <h1 className="auth-title">
@@ -68,40 +109,9 @@ export default function RegisterPage() {
         </h1>
         <p className="auth-subtitle">Complete your account setup</p>
 
-        {error && <div className="error-message">{error}</div>}
-        {success && <div className="success-message">{success}</div>}
-
-        <form onSubmit={handleRegister}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">Create Password</label>
-            <input
-              id="password"
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: '2rem' }}>
-            <label className="form-label" htmlFor="confirmPassword">Confirm Password</label>
-            <input
-              id="confirmPassword"
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Creating Account...' : 'Complete Setup'}
-          </button>
-        </form>
+        <Suspense fallback={<div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>Loading...</div>}>
+          <RegisterForm />
+        </Suspense>
       </div>
     </div>
   );
