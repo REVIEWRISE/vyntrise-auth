@@ -121,9 +121,14 @@ jobs:
           script: |
             set -e
 
-            cd /opt/vyntrise-auth
+            # Clone repo on first deployment if directory doesn't exist
+            if [ ! -d "/vyntrise-auth" ]; then
+              git clone https://github.com/REVIEWRISE/vyntrise-auth.git /vyntrise-auth
+            fi
 
-            # Pull latest docker-compose from repo
+            cd /vyntrise-auth
+
+            # Pull latest changes
             git pull origin master
 
             # Log in to GHCR
