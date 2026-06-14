@@ -121,12 +121,14 @@ jobs:
           script: |
             set -e
 
+            DEPLOY_DIR="$HOME/vyntrise-auth"
+
             # Clone repo on first deployment if directory doesn't exist
-            if [ ! -d "/vyntrise-auth" ]; then
-              git clone https://github.com/REVIEWRISE/vyntrise-auth.git /vyntrise-auth
+            if [ ! -d "$DEPLOY_DIR" ]; then
+              git clone https://github.com/REVIEWRISE/vyntrise-auth.git "$DEPLOY_DIR"
             fi
 
-            cd /vyntrise-auth
+            cd "$DEPLOY_DIR"
 
             # Pull latest changes
             git pull origin master
