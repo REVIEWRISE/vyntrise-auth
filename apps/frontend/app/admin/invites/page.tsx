@@ -27,7 +27,7 @@ export default function AdminInvites() {
   const fetchInvites = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3010/api/admin/invites', {
+      const res = await fetch('/api/admin/invites', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -52,7 +52,7 @@ export default function AdminInvites() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const res = await fetch('http://localhost:3010/api/admin/invites', {
+      const res = await fetch('/api/admin/invites', {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,

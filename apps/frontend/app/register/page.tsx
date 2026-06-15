@@ -37,7 +37,7 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3010/api/invite/register', {
+      const response = await fetch('/api/invite/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
