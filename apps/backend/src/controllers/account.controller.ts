@@ -72,8 +72,19 @@ export const changeEmail = async (req: AuthRequest, res: Response) => {
       data: { email: newEmail },
     });
 
+    console.log('[changeEmail] 📧 Sending email change notifications');
+    console.log('[changeEmail] Old Email:', oldEmail);
+    console.log('[changeEmail] New Email:', newEmail);
+
     // Non-blocking notification
-    emailService.sendEmailChangeNotification(oldEmail, newEmail).catch(console.error);
+    emailService.sendEmailChangeNotification(oldEmail, newEmail)
+      .then(() => {
+        console.log('[changeEmail] ✅ Email change notifications sent successfully');
+      })
+      .catch((err: Error) => {
+        console.error('[changeEmail] ❌ Failed to send email change notification');
+        console.error('[changeEmail] Error:', err);
+      });
 
     return res.json({ id: updated.id, email: updated.email, createdAt: updated.createdAt });
   } catch (error) {

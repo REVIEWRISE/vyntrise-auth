@@ -6,6 +6,11 @@ export class SmtpProvider implements EmailService {
   private fromAddress: string;
 
   constructor() {
+    console.log('[SmtpProvider] Initializing SMTP email provider');
+    console.log('[SmtpProvider] Host:', process.env.SMTP_HOST);
+    console.log('[SmtpProvider] Port:', process.env.SMTP_PORT || '587');
+    console.log('[SmtpProvider] User:', process.env.SMTP_USER);
+    
     // General SMTP configuration
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -18,35 +23,63 @@ export class SmtpProvider implements EmailService {
     });
 
     this.fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@vyntrise.com';
-  }
-
-  async sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
-    await this.transporter.sendMail({
-      from: `"Vyntrise" <${this.fromAddress}>`,
-      to,
-      subject: 'Reset your Vyntrise password',
-      html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2 style="color: #18181b;">Reset your password</h2>
-          <p style="color: #52525b;">You requested a password reset. Click the button below to set a new password. This link expires in 1 hour.</p>
-          <a href="${resetLink}"
-             style="display: inline-block; margin: 24px 0; padding: 12px 24px;
-                    background: #18181b; color: #fafafa; text-decoration: none;
-                    border-radius: 6px; font-weight: 600;">
-            Reset Password
-          </a>
-          <p style="color: #a1a1aa; font-size: 13px;">
-            If you didn't request this, you can safely ignore this email.
-          </p>
-          <p style="color: #a1a1aa; font-size: 12px; margin-top: 32px;">
-            Or copy this link: <a href="${resetLink}" style="color: #6366f1;">${resetLink}</a>
-          </p>
-        </div>
-      `,
+    console.log('[SmtpProvider] From Address:', this.fromAddress);
+    
+    // Verify connection on initialization
+    this.transporter.verify((error, success) => {
+      if (error) {
+        console.error('[SmtpProvider] ❌ Connection failed:', error.message);
+      } else {
+        console.log('[SmtpProvider] ✅ SMTP connection verified and ready to send emails');
+      }
     });
   }
 
+  async sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
+    console.log('[SmtpProvider] 📧 Preparing password reset email');
+    console.log('[SmtpProvider] To:', to);
+    console.log('[SmtpProvider] Reset Link:', resetLink);
+    
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"Vyntrise" <${this.fromAddress}>`,
+        to,
+        subject: 'Reset your Vyntrise password',
+        html: `
+          <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #18181b;">Reset your password</h2>
+            <p style="color: #52525b;">You requested a password reset. Click the button below to set a new password. This link expires in 1 hour.</p>
+            <a href="${resetLink}"
+               style="display: inline-block; margin: 24px 0; padding: 12px 24px;
+                      background: #18181b; color: #fafafa; text-decoration: none;
+                      border-radius: 6px; font-weight: 600;">
+              Reset Password
+            </a>
+            <p style="color: #a1a1aa; font-size: 13px;">
+              If you didn't request this, you can safely ignore this email.
+            </p>
+            <p style="color: #a1a1aa; font-size: 12px; margin-top: 32px;">
+              Or copy this link: <a href="${resetLink}" style="color: #6366f1;">${resetLink}</a>
+            </p>
+          </div>
+        `,
+      });
+      
+      console.log('[SmtpProvider] ✅ Password reset email sent successfully');
+      console.log('[SmtpProvider] Message ID:', info.messageId);
+      console.log('[SmtpProvider] Response:', info.response);
+    } catch (error) {
+      console.error('[SmtpProvider] ❌ Failed to send password reset email');
+      console.error('[SmtpProvider] Error:', error);
+      throw error;
+    }
+  }
+
   async sendEmailChangeNotification(oldEmail: string, newEmail: string): Promise<void> {
+    console.log('[SmtpProvider] 📧 Preparing email change notification');
+    console.log('[SmtpProvider] Old Email:', oldEmail);
+    console.log('[SmtpProvider] New Email:', newEmail);
+    
     const message = (to: string, changed: string) => ({
       from: `"Vyntrise" <${this.fromAddress}>`,
       to,
@@ -65,32 +98,56 @@ export class SmtpProvider implements EmailService {
       `,
     });
 
-    await Promise.all([
-      this.transporter.sendMail(message(oldEmail, newEmail)),
-      this.transporter.sendMail(message(newEmail, newEmail)),
-    ]);
+    try {
+      await Promise.all([
+        this.transporter.sendMail(message(oldEmail, newEmail)),
+        this.transporter.sendMail(message(newEmail, newEmail)),
+      ]);
+      
+      console.log('[SmtpProvider] ✅ Email change notifications sent successfully');
+      console.log('[SmtpProvider] Sent to old email:', oldEmail);
+      console.log('[SmtpProvider] Sent to new email:', newEmail);
+    } catch (error) {
+      console.error('[SmtpProvider] ❌ Failed to send email change notification');
+      console.error('[SmtpProvider] Error:', error);
+      throw error;
+    }
   }
 
   async sendInviteEmail(to: string, registerLink: string): Promise<void> {
-    await this.transporter.sendMail({
-      from: `"Vyntrise" <${this.fromAddress}>`,
-      to,
-      subject: "You've been invited to Vyntrise",
-      html: `
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2 style="color: #18181b;">You're invited to Vyntrise</h2>
-          <p style="color: #52525b;">You've been invited to join a platform on Vyntrise. Click the button below to create your account. This link expires in 7 days.</p>
-          <a href="${registerLink}"
-             style="display: inline-block; margin: 24px 0; padding: 12px 24px;
-                    background: #18181b; color: #fafafa; text-decoration: none;
-                    border-radius: 6px; font-weight: 600;">
-            Accept Invitation
-          </a>
-          <p style="color: #a1a1aa; font-size: 12px; margin-top: 32px;">
-            Or copy this link: <a href="${registerLink}" style="color: #6366f1;">${registerLink}</a>
-          </p>
-        </div>
-      `,
-    });
+    console.log('[SmtpProvider] 📧 Preparing invitation email');
+    console.log('[SmtpProvider] To:', to);
+    console.log('[SmtpProvider] Register Link:', registerLink);
+    
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"Vyntrise" <${this.fromAddress}>`,
+        to,
+        subject: "You've been invited to Vyntrise",
+        html: `
+          <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #18181b;">You're invited to Vyntrise</h2>
+            <p style="color: #52525b;">You've been invited to join a platform on Vyntrise. Click the button below to create your account. This link expires in 7 days.</p>
+            <a href="${registerLink}"
+               style="display: inline-block; margin: 24px 0; padding: 12px 24px;
+                      background: #18181b; color: #fafafa; text-decoration: none;
+                      border-radius: 6px; font-weight: 600;">
+              Accept Invitation
+            </a>
+            <p style="color: #a1a1aa; font-size: 12px; margin-top: 32px;">
+              Or copy this link: <a href="${registerLink}" style="color: #6366f1;">${registerLink}</a>
+            </p>
+          </div>
+        `,
+      });
+      
+      console.log('[SmtpProvider] ✅ Invitation email sent successfully');
+      console.log('[SmtpProvider] Message ID:', info.messageId);
+      console.log('[SmtpProvider] Response:', info.response);
+    } catch (error) {
+      console.error('[SmtpProvider] ❌ Failed to send invitation email');
+      console.error('[SmtpProvider] Error:', error);
+      throw error;
+    }
   }
 }

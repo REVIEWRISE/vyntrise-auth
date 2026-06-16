@@ -107,10 +107,21 @@ export const createInvite = async (req: Request, res: Response) => {
 
     const registerLink = `${process.env.FRONTEND_URL}/register?token=${token}`;
 
+    console.log('[createInvite] 📧 Sending invitation email');
+    console.log('[createInvite] To:', email);
+    console.log('[createInvite] Register Link:', registerLink);
+    console.log('[createInvite] Platform ID:', platformId);
+    console.log('[createInvite] Role:', role);
+
     // Send invite email non-blocking
-    emailService.sendInviteEmail(email, registerLink).catch((err: Error) =>
-      console.error('[createInvite] Failed to send invite email:', err)
-    );
+    emailService.sendInviteEmail(email, registerLink)
+      .then(() => {
+        console.log('[createInvite] ✅ Invitation email sent successfully to:', email);
+      })
+      .catch((err: Error) => {
+        console.error('[createInvite] ❌ Failed to send invite email to:', email);
+        console.error('[createInvite] Error:', err);
+      });
 
     res.status(201).json({
       message: 'Invitation created',

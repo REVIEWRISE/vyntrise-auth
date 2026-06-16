@@ -6,10 +6,14 @@ import { emailService } from '../services/email.service';
 
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
   const { email } = req.body;
+  
+  console.log('[forgotPassword] 🔐 Password reset request received');
+  console.log('[forgotPassword] Email:', email);
 
   // Validate email presence and format
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || typeof email !== 'string' || !emailRegex.test(email)) {
+    console.log('[forgotPassword] ❌ Invalid email format');
     res.status(400).json({ message: 'Valid email address is required' });
     return;
   }
@@ -18,6 +22,8 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (user) {
+    console.log('[forgotPassword] ✅ User found:', user.id);
+    
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
@@ -26,19 +32,29 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
       update: { token, expiresAt, isUsed: false, createdAt: new Date() },
       create: { userId: user.id, token, expiresAt, isUsed: false },
     });
+    
+    console.log('[forgotPassword] 💾 Reset token created in database');
+    console.log('[forgotPassword] Token:', token);
+    console.log('[forgotPassword] Expires at:', expiresAt.toISOString());
 
     const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    console.log('[forgotPassword] 🔗 Reset link:', resetLink);
 
     try {
+      console.log('[forgotPassword] 📤 Attempting to send email...');
       await emailService.sendPasswordResetEmail(email, resetLink);
+      console.log('[forgotPassword] ✅ Email sent successfully');
     } catch (err) {
-      console.error('[forgotPassword] Failed to send reset email:', err);
+      console.error('[forgotPassword] ❌ Failed to send reset email:', err);
       res.status(500).json({ message: 'Failed to send reset email' });
       return;
     }
+  } else {
+    console.log('[forgotPassword] ⚠️ User not found (anti-enumeration - returning success anyway)');
   }
 
   // Always return 200 — do not reveal whether the email is registered
+  console.log('[forgotPassword] ✅ Request completed successfully');
   res.status(200).json({ message: 'If that email is registered, a reset link has been sent' });
 }
 
