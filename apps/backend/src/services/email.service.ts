@@ -1,5 +1,6 @@
 import { ConsoleEmailProvider } from './email-providers/console.provider';
 import { GmailProvider } from './email-providers/gmail.provider';
+import { SmtpProvider } from './email-providers/smtp.provider';
 
 export interface EmailService {
   sendPasswordResetEmail(to: string, resetLink: string): Promise<void>;
@@ -10,6 +11,8 @@ export interface EmailService {
 export function createEmailService(): EmailService {
   const provider = process.env.EMAIL_PROVIDER ?? 'console';
   switch (provider) {
+    case 'smtp':
+      return new SmtpProvider();
     case 'gmail':
       return new GmailProvider();
     case 'console':

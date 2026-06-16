@@ -158,6 +158,17 @@ Verify tokens using the shared `JWT_SECRET`. Contact the Vyntrise platform team 
 - The `platformId` check at login ensures users can only access platforms they've been invited to
 - Access tokens are short-lived (15 min) to limit exposure if leaked
 - All session activity is tracked in the `Session` table — admins can see and revoke sessions from the Account Settings page
+- **Session revocation is enforced immediately** — when a session is revoked, the user is logged out on the next authenticated request
+
+### Implementing Session Revocation in Your Platform
+
+When a user revokes their session from auth.vyntrise.com, your platform should immediately log them out. See [SSO_SESSION_VALIDATION_GUIDE.md](./SSO_SESSION_VALIDATION_GUIDE.md) for detailed implementation instructions including:
+
+- Detecting session revocation errors
+- Handling 401 responses with "revoked" messages
+- Redirecting users to re-authenticate
+- Performance optimization with caching
+- Code examples for Next.js, Express, Django, and more
 
 ---
 

@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import prisma from '../db/prisma';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -8,7 +10,7 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticateJWT = async (req: AuthRequest, res: Response, next: NextFunction) => {
   let token: string | undefined;
 
   if (req.headers.authorization?.startsWith('Bearer ')) {
@@ -24,6 +26,32 @@ export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunct
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; email: string };
+    
+    // Check if user still has an active session (refresh token)
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+      // Verify the refresh token is still valid in the database
+      const sessions = await prisma.session.findMany({ where: { userId: decoded.id } });
+      
+      let hasValidSession = false;
+      for (const session of sessions) {
+        const matches = await bcrypt.compare(refreshToken, session.hashedToken);
+        if (matches) {
+          hasValidSession = true;
+          break;
+        }
+      }
+      
+      if (!hasValidSession) {
+        // Session was revoked - clear cookies and reject request
+        const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
+        res.clearCookie('refreshToken', { domain: cookieDomain });
+        res.clearCookie('vyntrise_session', { domain: cookieDomain });
+        res.status(401).json({ message: 'Session revoked. Please login again.' });
+        return;
+      }
+    }
+    
     req.user = decoded;
     next();
   } catch {

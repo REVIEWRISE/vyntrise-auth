@@ -21,6 +21,10 @@ function LoginForm() {
     ? 'Your password has been reset. Please sign in.'
     : null;
 
+  const infoMessage = searchParams.get('message') === 'session-revoked'
+    ? 'Your session has been revoked. Please sign in again.'
+    : null;
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -73,6 +77,11 @@ function LoginForm() {
       {successMessage && (
         <div className="mb-6 p-3 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium">
           {successMessage}
+        </div>
+      )}
+      {infoMessage && (
+        <div className="mb-6 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm font-medium">
+          {infoMessage}
         </div>
       )}
       {error && (

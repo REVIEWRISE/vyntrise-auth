@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, Trash2, ArrowLeft, Shield, LogOut } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // ── Section: Change Email ─────────────────────────────────────────────────
   const [emailNewEmail, setEmailNewEmail] = useState('');
@@ -98,6 +99,8 @@ export default function AccountPage() {
         if (meRes.ok) {
           const data = await meRes.json();
           setProfile(data);
+          // Check if user is admin on any platform
+          setIsAdmin(data.platforms?.some((p: Platform) => p.role === 'ADMIN') || false);
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json();
@@ -176,9 +179,19 @@ export default function AccountPage() {
       const res = await apiFetch(`/api/account/sessions/${sessionId}`, { method: 'DELETE' });
       if (res.ok) {
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        
+        // Check if we just revoked our own session by trying to make another request
+        const checkRes = await apiFetch('/api/account/me');
+        if (!checkRes.ok) {
+          // We revoked our own session - redirect to login
+          localStorage.removeItem('accessToken');
+          router.push('/login?message=session-revoked');
+        }
       }
     } catch {
-      // silent
+      // If the request fails due to revoked session, redirect to login
+      localStorage.removeItem('accessToken');
+      router.push('/login?message=session-revoked');
     }
   }
 
@@ -221,6 +234,35 @@ export default function AccountPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 dark">
       <div className="max-w-2xl mx-auto space-y-6">
+
+        {/* Navigation Bar */}
+        <div className="flex items-center justify-between">
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/admin')}
+              className="text-zinc-400 hover:text-zinc-100 -ml-2"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Admin
+            </Button>
+          )}
+          <div className="ml-auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                localStorage.removeItem('accessToken');
+                router.push('/login');
+              }}
+              className="text-zinc-400 hover:text-zinc-100"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
 
         {/* Page header */}
         <div>

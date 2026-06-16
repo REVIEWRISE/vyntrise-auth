@@ -4,6 +4,8 @@ Centralized authentication service for the Vyntrise platform ecosystem. Deployed
 
 Vyntrise Auth acts as a **single sign-on (SSO) provider** for all Vyntrise products (vyntrise-sms, vyntrise-crm, etc.). Each external product registers itself as a **Platform** and redirects users here to authenticate. After login, users are sent back to the product with a short-lived JWT.
 
+📖 **[Complete Documentation Index](./DOCUMENTATION_INDEX.md)** - Navigate all guides and references
+
 ---
 
 ## Repository Structure
@@ -80,18 +82,30 @@ JWT_REFRESH_SECRET=your-refresh-secret
 PORT=3021
 NODE_ENV=development
 
+# CORS - Allowed origins for cross-origin requests (comma-separated)
+ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
+
 # Frontend (used to build email links)
 FRONTEND_URL=http://localhost:3001
 
 # Email
-# Set to "console" to log emails to stdout (dev default)
-# Set to "gmail" to send via Gmail
+# Options: "console" (logs to stdout), "smtp" (generic SMTP), "gmail" (Gmail-specific)
 EMAIL_PROVIDER=console
+
+# For SMTP provider (recommended for production)
+# SMTP_HOST=smtp.example.com
+# SMTP_PORT=587
+# SMTP_SECURE=false
+# SMTP_USER=your-email@example.com
+# SMTP_PASSWORD=your-smtp-password
+# SMTP_FROM=noreply@vyntrise.com
+
+# For Gmail provider (simple setup, low volume)
 GMAIL_USER=your-gmail@gmail.com
 GMAIL_APP_PASSWORD=your-gmail-app-password
 ```
 
-> Gmail App Passwords require 2FA to be enabled on the account. Generate one at https://myaccount.google.com/apppasswords
+> See [apps/backend/EMAIL_SETUP.md](apps/backend/EMAIL_SETUP.md) for detailed email configuration guides for different providers.
 
 ---
 
@@ -157,7 +171,23 @@ Every login creates a `Session` record. `POST /api/auth/refresh` rotates the sto
 
 ## SSO Integration
 
-See [SSO_INTEGRATION_GUIDE.md](./SSO_INTEGRATION_GUIDE.md) for step-by-step instructions on integrating an external Vyntrise app with this auth service.
+External Vyntrise products integrate with this auth service for single sign-on.
+
+### Quick Links
+
+- **[SSO Integration Guide](./SSO_INTEGRATION_GUIDE.md)** - Step-by-step guide to integrate your platform
+- **[Session Validation Guide](./SSO_SESSION_VALIDATION_GUIDE.md)** - Implement session revocation checking
+- **[Next.js Example](./examples/nextjs-integration/)** - Reference implementation with code examples
+
+### Integration Overview
+
+1. Create a platform in the admin panel
+2. Get your platform ID
+3. Configure your app to redirect to auth.vyntrise.com for login
+4. Handle the callback with the access token
+5. Implement session validation to enforce revocations
+
+See the [SSO Integration Guide](./SSO_INTEGRATION_GUIDE.md) for detailed instructions.
 
 ---
 
