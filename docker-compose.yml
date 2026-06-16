@@ -33,6 +33,10 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3021
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://auth.vyntrise.com}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER}
+      GMAIL_USER: ${GMAIL_USER}
+      GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD}
+      FRONTEND_URL: ${FRONTEND_URL:-https://auth.vyntrise.com}
     ports:
       - "3021:3021"
     networks:

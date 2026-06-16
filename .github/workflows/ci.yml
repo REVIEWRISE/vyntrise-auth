@@ -142,6 +142,10 @@ jobs:
             NODE_ENV=production
             NEXT_PUBLIC_API_URL=https://auth.vyntrise.com/api
             ALLOWED_ORIGINS=https://auth.vyntrise.com
+            EMAIL_PROVIDER=${{ secrets.EMAIL_PROVIDER }}
+            GMAIL_USER=${{ secrets.GMAIL_USER }}
+            GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
             EOF
 
             # Log in to GHCR
