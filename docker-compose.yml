@@ -51,9 +51,9 @@ services:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://auth.vyntrise.com/api}
-      PORT: 3020
+      PORT: 3002
     ports:
-      - "3020:3020"
+      - "3002:3002"
     networks:
       - vyntrise-auth-net
 
