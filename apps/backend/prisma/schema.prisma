@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -13,7 +14,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  platforms UserPlatformAccess[]
+  platforms          UserPlatformAccess[]
+  passwordResetToken PasswordResetToken?
+  sessions           Session[]
 }
 
 model Platform {
@@ -44,6 +47,7 @@ model Invitation {
   id         String   @id @default(uuid())
   email      String
   platformId String
+  role       String   @default("USER") // Role to be assigned when invitation is accepted
   token      String   @unique
   expiresAt  DateTime
   isUsed     Boolean  @default(false)
@@ -52,4 +56,26 @@ model Invitation {
   platform Platform @relation(fields: [platformId], references: [id])
 
   @@unique([email, platformId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  token     String   @unique
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  hashedToken String   @unique
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

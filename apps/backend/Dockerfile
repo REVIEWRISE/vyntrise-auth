@@ -35,4 +35,4 @@ COPY --from=builder /app/prisma.config.ts ./
 # Run Prisma migrations then start the server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
 
-EXPOSE 3010
+EXPOSE 3021

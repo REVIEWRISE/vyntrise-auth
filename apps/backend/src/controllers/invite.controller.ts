@@ -59,19 +59,37 @@ export const registerViaInvite = async (req: Request, res: Response) => {
     let user = await prisma.user.findUnique({ where: { email: invitation.email } });
 
     if (!user) {
+      // New user - create account
       user = await prisma.user.create({
         data: {
           email: invitation.email,
           password: hashedPassword
         }
       });
+    } else {
+      // Existing user - check if they already have access to this platform
+      const existingAccess = await prisma.userPlatformAccess.findUnique({
+        where: {
+          userId_platformId: {
+            userId: user.id,
+            platformId: invitation.platformId
+          }
+        }
+      });
+
+      if (existingAccess) {
+        return res.status(400).json({ 
+          message: 'You already have access to this platform. Please log in instead.' 
+        });
+      }
     }
 
-    // Link user to the platform
+    // Link user to the platform with the role from the invitation
     await prisma.userPlatformAccess.create({
       data: {
         userId: user.id,
-        platformId: invitation.platformId
+        platformId: invitation.platformId,
+        role: invitation.role || 'USER'
       }
     });
 
@@ -81,7 +99,11 @@ export const registerViaInvite = async (req: Request, res: Response) => {
       data: { isUsed: true }
     });
 
-    res.status(201).json({ message: 'User registered and linked to platform successfully' });
+    res.status(201).json({ 
+      message: user ? 
+        'Platform access granted successfully' : 
+        'User registered and linked to platform successfully' 
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });

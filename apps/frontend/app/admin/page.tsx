@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Mail } from 'lucide-react';
 
+import { apiFetch } from '@/lib/api';
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<{totalUsers: number, pendingInvites: number} | null>(null);
   const [error, setError] = useState('');
@@ -11,10 +13,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('/api/admin/stats', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await apiFetch('/api/admin/stats');
         
         if (!res.ok) throw new Error('Failed to fetch stats');
         

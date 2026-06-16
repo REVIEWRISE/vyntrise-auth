@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma';
+import crypto from 'crypto';
+import { emailService } from '../services/email.service';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
@@ -16,7 +18,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     res.json({
       totalUsers,
       pendingInvites,
-      recentActivity: [], // Placeholder for future activity logs
+      recentActivity: [],
     });
   } catch (error) {
     console.error('getDashboardStats error:', error);
@@ -57,12 +59,127 @@ export const getInvites = async (req: Request, res: Response) => {
 
     const invites = await prisma.invitation.findMany({
       where: { platformId },
+      include: {
+        platform: {
+          select: { name: true }
+        }
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     res.json(invites);
   } catch (error) {
     console.error('getInvites error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const createInvite = async (req: Request, res: Response) => {
+  try {
+    const platformId = (req as any).adminPlatformId;
+    const { email, role = 'USER' } = req.body;
+
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Valid email address is required' });
+    }
+
+    if (!['USER', 'ADMIN'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be USER or ADMIN' });
+    }
+
+    // Check if there's already an active unused invite for this email+platform
+    const existing = await prisma.invitation.findUnique({
+      where: { email_platformId: { email, platformId } },
+    });
+    if (existing && !existing.isUsed && existing.expiresAt > new Date()) {
+      return res.status(409).json({ message: 'An active invitation already exists for this email' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    // Store the role in the invitation so it can be applied during registration
+    const invitation = await prisma.invitation.upsert({
+      where: { email_platformId: { email, platformId } },
+      update: { token, expiresAt, isUsed: false, role },
+      create: { email, platformId, token, expiresAt, role },
+    });
+
+    const registerLink = `${process.env.FRONTEND_URL}/register?token=${token}`;
+
+    // Send invite email non-blocking
+    emailService.sendInviteEmail(email, registerLink).catch((err: Error) =>
+      console.error('[createInvite] Failed to send invite email:', err)
+    );
+
+    res.status(201).json({
+      message: 'Invitation created',
+      token: invitation.token,
+      registerLink,
+    });
+  } catch (error) {
+    console.error('createInvite error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getPlatforms = async (req: Request, res: Response) => {
+  try {
+    const platforms = await prisma.platform.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Get user counts separately to avoid _count issues with the driver adapter
+    const results = await Promise.all(
+      platforms.map(async (p) => {
+        const userCount = await prisma.userPlatformAccess.count({
+          where: { platformId: p.id },
+        });
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          createdAt: p.createdAt,
+          userCount,
+        };
+      })
+    );
+
+    res.json(results);
+  } catch (error) {
+    console.error('getPlatforms error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const createPlatform = async (req: Request, res: Response) => {
+  try {
+    const { name, description } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ message: 'Platform name is required' });
+    }
+
+    const existing = await prisma.platform.findUnique({ where: { name: name.trim() } });
+    if (existing) {
+      return res.status(409).json({ message: 'A platform with that name already exists' });
+    }
+
+    const platform = await prisma.platform.create({
+      data: { name: name.trim(), description: description?.trim() || null },
+    });
+
+    // Auto-grant the creating admin access to the new platform
+    const userId = (req as any).user?.id;
+    if (userId) {
+      await prisma.userPlatformAccess.create({
+        data: { userId, platformId: platform.id, role: 'ADMIN' },
+      });
+    }
+
+    res.status(201).json(platform);
+  } catch (error) {
+    console.error('createPlatform error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

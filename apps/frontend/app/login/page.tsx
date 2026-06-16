@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,16 +17,22 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const successMessage = searchParams.get('message') === 'password-reset'
+    ? 'Your password has been reset. Please sign in.'
+    : null;
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
+    const platformId = searchParams.get('platformId');
+
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(platformId ? { platformId } : {}) }),
       });
 
       const data = await response.json();
@@ -35,9 +42,19 @@ function LoginForm() {
         
         const redirectUrl = searchParams.get('redirectUrl');
         if (redirectUrl) {
-          const url = new URL(redirectUrl);
-          url.searchParams.append('token', data.accessToken);
-          window.location.href = url.toString();
+          try {
+            const url = new URL(redirectUrl);
+            // Safety: don't redirect to error pages or auth error routes
+            if (!url.pathname.includes('/error') && !url.pathname.includes('/api/auth/error')) {
+              url.searchParams.append('token', data.accessToken);
+              window.location.href = url.toString();
+            } else {
+              router.push('/admin');
+            }
+          } catch {
+            // Invalid URL — fall through to default
+            router.push('/admin');
+          }
         } else {
           router.push('/admin');
         }
@@ -53,6 +70,11 @@ function LoginForm() {
 
   return (
     <>
+      {successMessage && (
+        <div className="mb-6 p-3 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium">
+          {successMessage}
+        </div>
+      )}
       {error && (
         <div className="mb-6 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
           {error}
@@ -82,6 +104,11 @@ function LoginForm() {
             required
             className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
           />
+        </div>
+        <div className="flex justify-end">
+          <Link href="/forgot-password" className="text-zinc-400 hover:text-zinc-200 text-sm transition-colors">
+            Forgot your password?
+          </Link>
         </div>
         <Button type="submit" className="w-full mt-6 bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold" disabled={loading}>
           {loading ? 'Signing in...' : 'Sign In'}

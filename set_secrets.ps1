@@ -2,7 +2,7 @@ gh secret set DATABASE_URL --body "postgresql://postgres:password@localhost:5543
 gh secret set JWT_SECRET --body "supersecretjwt12345" --repo REVIEWRISE/vyntrise-auth
 gh secret set JWT_REFRESH_SECRET --body "supersecretrefresh12345" --repo REVIEWRISE/vyntrise-auth
 gh secret set NODE_ENV --body "production" --repo REVIEWRISE/vyntrise-auth
-gh secret set PORT --body "3010" --repo REVIEWRISE/vyntrise-auth
+gh secret set PORT --body "3021" --repo REVIEWRISE/vyntrise-auth
 gh secret set NEXT_PUBLIC_API_URL --body "https://auth.vyntrise.com/api" --repo REVIEWRISE/vyntrise-auth
 gh secret set ALLOWED_ORIGINS --body "https://auth.vyntrise.com" --repo REVIEWRISE/vyntrise-auth
 gh secret set POSTGRES_USER --body "postgres" --repo REVIEWRISE/vyntrise-auth

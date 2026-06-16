@@ -12,6 +12,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 
+import { apiFetch } from '@/lib/api';
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<Array<{ id: string, email: string, role: string, accessCreatedAt: string }>>([]);
   const [error, setError] = useState('');
@@ -19,10 +21,7 @@ export default function AdminUsers() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch('/api/admin/users', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await apiFetch('/api/admin/users');
         
         if (!res.ok) throw new Error('Failed to fetch users');
         

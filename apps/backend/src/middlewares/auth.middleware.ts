@@ -9,26 +9,24 @@ export interface AuthRequest extends Request {
 }
 
 export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunction) => {
-  // 1. Check Authorization header
-  // 2. Fallback to vyntrise_session cookie
-  let token = undefined;
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+  let token: string | undefined;
+
+  if (req.headers.authorization?.startsWith('Bearer ')) {
     token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.vyntrise_session) {
+  } else if (req.cookies?.vyntrise_session) {
     token = req.cookies.vyntrise_session;
   }
 
-  if (token) {
-
-    jwt.verify(token, process.env.JWT_SECRET as string, (err: any, user: any) => {
-      if (err) {
-        return res.status(403).json({ message: 'Forbidden or Token Expired' });
-      }
-
-      req.user = user as { id: string; email: string };
-      next();
-    });
-  } else {
+  if (!token) {
     res.status(401).json({ message: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; email: string };
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(403).json({ message: 'Forbidden or Token Expired' });
   }
 };
