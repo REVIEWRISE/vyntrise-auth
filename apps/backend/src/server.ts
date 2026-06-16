@@ -39,7 +39,24 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-import { getPlatforms, createPlatform } from './controllers/admin.controller';
+// Health checks
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'vyntrise-auth-backend',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'vyntrise-auth-backend',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -47,11 +64,6 @@ app.use('/api/auth', passwordResetRoutes);
 app.use('/api/invite', inviteRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/account', authenticateJWT, accountRoutes);
-
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', service: 'vyntrise-auth' });
-});
 
 // Start Server
 app.listen(PORT, () => {
