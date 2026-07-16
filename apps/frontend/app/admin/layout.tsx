@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, Users, Mail, LogOut, Globe, User } from 'lucide-react';
+import { LayoutDashboard, Users, Mail, LogOut, Globe, User, BookOpen } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -66,6 +66,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             >
               <Globe className="h-4 w-4" />
               Platforms
+            </Button>
+          </Link>
+          <Link href="/admin/docs">
+            <Button
+              variant={pathname === '/admin/docs' ? 'secondary' : 'ghost'}
+              className="w-full justify-start gap-3 font-medium"
+            >
+              <BookOpen className="h-4 w-4" />
+              Docs
             </Button>
           </Link>
           
