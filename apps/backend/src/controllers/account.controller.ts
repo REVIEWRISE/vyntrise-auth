@@ -2,6 +2,7 @@ import { Response } from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
 import { emailService } from '../services/email.service';
+import { logActivity } from '../services/audit.service';
 import { AuthRequest } from '../middlewares/auth.middleware';
 
 // GET /api/account/me
@@ -193,6 +194,14 @@ export const revokeSession = async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.session.delete({ where: { id: session.id } });
+
+    logActivity({
+      action: 'SESSION_REVOKED',
+      actorId: req.user!.id,
+      targetType: 'session',
+      targetId: session.id,
+    });
+
     return res.json({ message: 'Session revoked' });
   } catch (error) {
     console.error(error);
@@ -236,9 +245,10 @@ export const deleteAccount = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Delete sessions then user in a transaction
+    // Delete sessions and platform access, then the user, in a transaction
     await prisma.$transaction([
       prisma.session.deleteMany({ where: { userId: req.user!.id } }),
+      prisma.userPlatformAccess.deleteMany({ where: { userId: req.user!.id } }),
       prisma.user.delete({ where: { id: req.user!.id } }),
     ]);
 

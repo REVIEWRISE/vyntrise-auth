@@ -156,7 +156,12 @@ export const refresh = async (req: Request, res: Response) => {
     return res.status(403).json({ message: 'Session not found or revoked' });
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens({ id: decoded.id, email: decoded.email });
+  const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+  if (!user) {
+    return res.status(403).json({ message: 'User not found' });
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } = generateTokens({ id: user.id, email: user.email });
   const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
 
   // Rotate the stored hashed token and update lastUsedAt

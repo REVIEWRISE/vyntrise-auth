@@ -1,44 +1,15 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import crypto from 'crypto';
 import prisma from '../db/prisma';
-
-export const createInvite = async (req: Request, res: Response) => {
-  try {
-    // In a real scenario, this endpoint should be protected and only accessible by Platform Admins.
-    const { email, platformId } = req.body;
-
-    const platform = await prisma.platform.findUnique({ where: { id: platformId } });
-    if (!platform) {
-      return res.status(404).json({ message: 'Platform not found' });
-    }
-
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Valid for 7 days
-
-    const invitation = await prisma.invitation.create({
-      data: {
-        email,
-        platformId,
-        token,
-        expiresAt
-      }
-    });
-
-    // TODO: Send email with the invitation link containing the token
-    // e.g., sendEmail(email, `https://vyntrise.com/register?token=${token}`)
-
-    res.status(201).json({ message: 'Invitation created', token: invitation.token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-};
+import { logActivity } from '../services/audit.service';
 
 export const registerViaInvite = async (req: Request, res: Response) => {
   try {
     const { token, password } = req.body;
+
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: 'password must be at least 8 characters' });
+    }
 
     const invitation = await prisma.invitation.findUnique({
       where: { token },
@@ -97,6 +68,15 @@ export const registerViaInvite = async (req: Request, res: Response) => {
     await prisma.invitation.update({
       where: { id: invitation.id },
       data: { isUsed: true }
+    });
+
+    logActivity({
+      action: 'USER_JOINED_PLATFORM',
+      platformId: invitation.platformId,
+      actorId: user.id,
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { email: user.email, role: invitation.role || 'USER' },
     });
 
     res.status(201).json({ 

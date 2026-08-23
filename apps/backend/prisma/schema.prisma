@@ -17,6 +17,7 @@ model User {
   platforms          UserPlatformAccess[]
   passwordResetToken PasswordResetToken?
   sessions           Session[]
+  auditLogs          AuditLog[]
 }
 
 model Platform {
@@ -28,6 +29,7 @@ model Platform {
 
   users       UserPlatformAccess[]
   invitations Invitation[]
+  auditLogs   AuditLog[]
 }
 
 model UserPlatformAccess {
@@ -37,7 +39,7 @@ model UserPlatformAccess {
   role       String   @default("USER") // e.g., ADMIN, USER
   createdAt  DateTime @default(now())
 
-  user     User     @relation(fields: [userId], references: [id])
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   platform Platform @relation(fields: [platformId], references: [id])
 
   @@unique([userId, platformId])
@@ -78,4 +80,20 @@ model Session {
   lastUsedAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  platformId String?
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  platform Platform? @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  actor    User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([platformId, createdAt])
 }

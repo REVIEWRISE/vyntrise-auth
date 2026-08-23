@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../db/prisma';
 import crypto from 'crypto';
 import { emailService } from '../services/email.service';
+import { logActivity } from '../services/audit.service';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
@@ -15,10 +16,27 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       where: { platformId, isUsed: false },
     });
 
+    const recentLogs = await prisma.auditLog.findMany({
+      where: { platformId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: { actor: { select: { email: true } } },
+    });
+
+    const recentActivity = recentLogs.map((log) => ({
+      id: log.id,
+      action: log.action,
+      actorEmail: log.actor?.email ?? null,
+      targetType: log.targetType,
+      targetId: log.targetId,
+      metadata: log.metadata,
+      createdAt: log.createdAt,
+    }));
+
     res.json({
       totalUsers,
       pendingInvites,
-      recentActivity: [],
+      recentActivity,
     });
   } catch (error) {
     console.error('getDashboardStats error:', error);
@@ -107,6 +125,15 @@ export const createInvite = async (req: Request, res: Response) => {
 
     const registerLink = `${process.env.FRONTEND_URL}/register?token=${token}`;
 
+    logActivity({
+      action: 'INVITE_CREATED',
+      platformId,
+      actorId: (req as any).user?.id,
+      targetType: 'invitation',
+      targetId: invitation.id,
+      metadata: { email, role },
+    });
+
     console.log('[createInvite] 📧 Sending invitation email');
     console.log('[createInvite] To:', email);
     console.log('[createInvite] Register Link:', registerLink);
@@ -136,7 +163,16 @@ export const createInvite = async (req: Request, res: Response) => {
 
 export const getPlatforms = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.id;
+
+    const adminAccess = await prisma.userPlatformAccess.findMany({
+      where: { userId, role: 'ADMIN' },
+      select: { platformId: true },
+    });
+    const platformIds = adminAccess.map((a) => a.platformId);
+
     const platforms = await prisma.platform.findMany({
+      where: { id: { in: platformIds } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -159,6 +195,40 @@ export const getPlatforms = async (req: Request, res: Response) => {
     res.json(results);
   } catch (error) {
     console.error('getPlatforms error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getPlatformById = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const userId = (req as any).user?.id;
+
+    // Scoped to this specific platform, not "admin of any platform" — otherwise an
+    // admin of platform A could read platform B's details just by guessing its id.
+    const access = await prisma.userPlatformAccess.findFirst({
+      where: { userId, platformId: id, role: 'ADMIN' },
+    });
+    if (!access) {
+      return res.status(403).json({ message: 'Forbidden: Admin access required for this platform' });
+    }
+
+    const platform = await prisma.platform.findUnique({ where: { id } });
+    if (!platform) {
+      return res.status(404).json({ message: 'Platform not found' });
+    }
+
+    const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+
+    res.json({
+      id: platform.id,
+      name: platform.name,
+      description: platform.description,
+      createdAt: platform.createdAt,
+      userCount,
+    });
+  } catch (error) {
+    console.error('getPlatformById error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -187,6 +257,15 @@ export const createPlatform = async (req: Request, res: Response) => {
         data: { userId, platformId: platform.id, role: 'ADMIN' },
       });
     }
+
+    logActivity({
+      action: 'PLATFORM_CREATED',
+      platformId: platform.id,
+      actorId: userId,
+      targetType: 'platform',
+      targetId: platform.id,
+      metadata: { name: platform.name },
+    });
 
     res.status(201).json(platform);
   } catch (error) {
