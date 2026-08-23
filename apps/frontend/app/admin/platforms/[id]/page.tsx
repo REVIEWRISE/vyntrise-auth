@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Copy, Check, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
+import { CopyButton } from '@/components/copy-button';
 
 interface Platform {
   id: string;
@@ -13,19 +14,6 @@ interface Platform {
   description: string | null;
   createdAt: string;
   userCount: number;
-}
-
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? 'Copied!' : label}
-    </button>
-  );
 }
 
 function CodeBlock({ code, lang = 'bash' }: { code: string; lang?: string }) {
@@ -79,14 +67,16 @@ export default function PlatformDetailPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch('/api/admin/platforms')
-      .then(r => r.json())
-      .then((platforms: Platform[]) => {
-        const found = platforms.find(p => p.id === id);
-        if (!found) setError('Platform not found');
-        else setPlatform(found);
+    apiFetch(`/api/admin/platforms/${id}`)
+      .then(async (r) => {
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.message || 'Failed to load platform');
+        }
+        return r.json();
       })
-      .catch(() => setError('Failed to load platform'))
+      .then((found: Platform) => setPlatform(found))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -279,6 +269,12 @@ const user = await res.json();
     return false;
   }
 }`} />
+        <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+          The refresh token cookie is <IC>SameSite=Lax</IC>, so the browser only sends it on
+          same-site requests. Cookie-based refresh only works if your app is on a{' '}
+          <IC>*.vyntrise.com</IC> subdomain — a fully external domain won't receive the cookie
+          and needs a different token-refresh strategy.
+        </div>
       </div>
 
       {/* Step 5 - CORS */}

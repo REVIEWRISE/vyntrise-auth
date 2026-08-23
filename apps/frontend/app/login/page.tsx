@@ -42,14 +42,22 @@ function LoginForm() {
       const data = await response.json();
 
       if (response.ok) {
+        if (!data.accessToken) {
+          setError('Login succeeded but no access token was returned');
+          return;
+        }
         localStorage.setItem('accessToken', data.accessToken);
-        
+
         const redirectUrl = searchParams.get('redirectUrl');
         if (redirectUrl) {
           try {
             const url = new URL(redirectUrl);
-            // Safety: don't redirect to error pages or auth error routes
-            if (!url.pathname.includes('/error') && !url.pathname.includes('/api/auth/error')) {
+            // Only ever redirect to a *.vyntrise.com subdomain over HTTPS — anything else
+            // is an open redirect / token-exfiltration vector (or, for javascript: URIs, XSS).
+            const isAllowedHost = url.protocol === 'https:'
+              && (url.hostname === 'vyntrise.com' || url.hostname.endsWith('.vyntrise.com'));
+            const isSafePath = !url.pathname.includes('/error') && !url.pathname.includes('/api/auth/error');
+            if (isAllowedHost && isSafePath) {
               url.searchParams.append('token', data.accessToken);
               window.location.href = url.toString();
             } else {

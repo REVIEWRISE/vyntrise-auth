@@ -61,7 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
           <Link href="/admin/platforms">
             <Button
-              variant={pathname === '/admin/platforms' ? 'secondary' : 'ghost'}
+              variant={pathname === '/admin/platforms' || pathname.startsWith('/admin/platforms/') ? 'secondary' : 'ghost'}
               className="w-full justify-start gap-3 font-medium"
             >
               <Globe className="h-4 w-4" />

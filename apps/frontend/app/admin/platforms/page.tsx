@@ -22,18 +22,6 @@ interface Platform {
   userCount: number;
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-    >
-      {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
-    </button>
-  );
-}
-
 export default function AdminPlatforms() {
   const router = useRouter();
   const [platforms, setPlatforms] = useState<Platform[]>([]);

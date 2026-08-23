@@ -31,10 +31,15 @@ async function handler(
 
   const resHeaders = new Headers();
   backendRes.headers.forEach((value, key) => {
-    if (!['transfer-encoding', 'connection'].includes(key.toLowerCase())) {
+    if (!['transfer-encoding', 'connection', 'set-cookie'].includes(key.toLowerCase())) {
       resHeaders.set(key, value);
     }
   });
+
+  // Headers.set() would overwrite all but the last Set-Cookie — each cookie must be appended separately.
+  for (const cookie of backendRes.headers.getSetCookie()) {
+    resHeaders.append('set-cookie', cookie);
+  }
 
   const responseBody = await backendRes.arrayBuffer();
 

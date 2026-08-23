@@ -26,17 +26,21 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
       return res;
     }
 
-    // Try to refresh the access token
-    const refreshed = await tryRefresh();
-    if (refreshed) {
-      // Retry original request with new token
-      const newToken = localStorage.getItem('accessToken');
-      headers.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(input, { ...init, headers, credentials: 'include' });
-    } else {
-      // Refresh failed — clear token and redirect
-      localStorage.removeItem('accessToken');
-      window.location.href = '/login';
+    // Only 401 (unauthenticated) warrants a token refresh. A plain 403 means the session
+    // is valid but lacks permission for this resource — refreshing won't fix that, and
+    // forcing a logout would kick out a perfectly-authenticated user over a permissions error.
+    if (res.status === 401) {
+      const refreshed = await tryRefresh();
+      if (refreshed) {
+        // Retry original request with new token
+        const newToken = localStorage.getItem('accessToken');
+        headers.set('Authorization', `Bearer ${newToken}`);
+        res = await fetch(input, { ...init, headers, credentials: 'include' });
+      } else {
+        // Refresh failed — clear token and redirect
+        localStorage.removeItem('accessToken');
+        window.location.href = '/login';
+      }
     }
   }
 

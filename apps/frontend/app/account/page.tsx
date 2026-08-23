@@ -59,6 +59,7 @@ export default function AccountPage() {
   // ── Global state ──────────────────────────────────────────────────────────
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsError, setSessionsError] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -175,11 +176,12 @@ export default function AccountPage() {
   }
 
   async function handleRevokeSession(sessionId: string) {
+    setSessionsError('');
     try {
       const res = await apiFetch(`/api/account/sessions/${sessionId}`, { method: 'DELETE' });
       if (res.ok) {
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-        
+
         // Check if we just revoked our own session by trying to make another request
         const checkRes = await apiFetch('/api/account/me');
         if (!checkRes.ok) {
@@ -187,6 +189,9 @@ export default function AccountPage() {
           localStorage.removeItem('accessToken');
           router.push('/login?message=session-revoked');
         }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSessionsError(data.message || 'Failed to revoke session');
       }
     } catch {
       // If the request fails due to revoked session, redirect to login
@@ -410,7 +415,8 @@ export default function AccountPage() {
           <CardHeader>
             <CardTitle className="text-zinc-50 text-lg font-semibold">Active Sessions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {sessionsError && <ErrorBanner message={sessionsError} />}
             {sessions.length > 0 ? (
               <ul className="space-y-3">
                 {sessions.map((session) => (
