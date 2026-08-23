@@ -3,3 +3,7 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# Local curl/API testing artifacts — never commit these
+cookies.txt
+login.json
