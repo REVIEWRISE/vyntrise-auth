@@ -126,30 +126,16 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
       data: { password: hashedPassword },
     });
 
-    // Delete sessions except the current one (matched by refreshToken cookie)
-    const refreshTokenCookie = req.cookies?.refreshToken;
-    const sessions = await prisma.session.findMany({ where: { userId: req.user!.id } });
-
-    if (refreshTokenCookie && sessions.length > 0) {
-      let currentSessionId: string | undefined;
-      for (const session of sessions) {
-        const matches = await bcrypt.compare(refreshTokenCookie, session.hashedToken);
-        if (matches) {
-          currentSessionId = session.id;
-          break;
-        }
-      }
-
-      if (currentSessionId) {
-        await prisma.session.deleteMany({
-          where: { userId: req.user!.id, id: { not: currentSessionId } },
-        });
-      } else {
-        // Cookie present but no match — delete all
-        await prisma.session.deleteMany({ where: { userId: req.user!.id } });
-      }
+    // Delete sessions except the current one (its id is embedded in the access token,
+    // so this works the same whether the caller is cookie-based or Bearer-only).
+    const currentSessionId = req.user!.sessionId;
+    if (currentSessionId) {
+      await prisma.session.deleteMany({
+        where: { userId: req.user!.id, id: { not: currentSessionId } },
+      });
     } else {
-      // No cookie — delete all sessions
+      // Legacy fallback: token predates sessionId (only possible for up to 15 minutes
+      // after this deploy) — safest default is to sign the user out everywhere.
       await prisma.session.deleteMany({ where: { userId: req.user!.id } });
     }
 

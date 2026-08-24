@@ -7,6 +7,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     email: string;
+    sessionId?: string;
   };
 }
 
@@ -25,14 +26,27 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; email: string };
-    
-    // Check if user still has an active session (refresh token)
-    const refreshToken = req.cookies?.refreshToken;
-    if (refreshToken) {
-      // Verify the refresh token is still valid in the database
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; email: string; sessionId?: string };
+
+    if (decoded.sessionId) {
+      // Revocation is always enforced when the token carries a session id — a fast, indexed
+      // lookup, independent of whether a refreshToken cookie happens to be present. Bearer-only
+      // callers (e.g. external SSO integrations) never carry that cookie, so the old check —
+      // which only ran `if (refreshToken)` — silently let revoked sessions keep working for them.
+      const session = await prisma.session.findUnique({ where: { id: decoded.sessionId } });
+      if (!session || session.userId !== decoded.id) {
+        const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
+        res.clearCookie('refreshToken', { domain: cookieDomain });
+        res.clearCookie('vyntrise_session', { domain: cookieDomain });
+        res.status(401).json({ message: 'Session revoked. Please login again.' });
+        return;
+      }
+    } else if (req.cookies?.refreshToken) {
+      // Legacy fallback for access tokens issued before sessionId was added to the payload —
+      // only reachable for up to 15 minutes after this deploy (access tokens are short-lived).
+      const refreshToken = req.cookies.refreshToken;
       const sessions = await prisma.session.findMany({ where: { userId: decoded.id } });
-      
+
       let hasValidSession = false;
       for (const session of sessions) {
         const matches = await bcrypt.compare(refreshToken, session.hashedToken);
@@ -41,9 +55,8 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
           break;
         }
       }
-      
+
       if (!hasValidSession) {
-        // Session was revoked - clear cookies and reject request
         const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
         res.clearCookie('refreshToken', { domain: cookieDomain });
         res.clearCookie('vyntrise_session', { domain: cookieDomain });
@@ -51,8 +64,8 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
         return;
       }
     }
-    
-    req.user = decoded;
+
+    req.user = { id: decoded.id, email: decoded.email, sessionId: decoded.sessionId };
     next();
   } catch {
     res.status(403).json({ message: 'Forbidden or Token Expired' });

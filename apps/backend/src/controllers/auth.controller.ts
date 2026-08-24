@@ -1,17 +1,18 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import prisma from '../db/prisma';
 
-const generateTokens = (user: { id: string, email: string }) => {
+const generateTokens = (user: { id: string, email: string }, sessionId: string) => {
   const accessToken = jwt.sign(
-    { id: user.id, email: user.email },
+    { id: user.id, email: user.email, sessionId },
     process.env.JWT_SECRET as string,
     { expiresIn: '15m' }
   );
 
   const refreshToken = jwt.sign(
-    { id: user.id, email: user.email },
+    { id: user.id, email: user.email, sessionId },
     process.env.JWT_REFRESH_SECRET as string,
     { expiresIn: '7d' }
   );
@@ -45,7 +46,11 @@ export const login = async (req: Request, res: Response) => {
       }
     }
 
-    const { accessToken, refreshToken } = generateTokens(user);
+    // Generate the session id up front so it can be embedded in both tokens — this lets
+    // revocation checks be a fast, always-enforced primary-key lookup instead of a bcrypt
+    // scan that only ran when a refreshToken cookie happened to be present.
+    const sessionId = crypto.randomUUID();
+    const { accessToken, refreshToken } = generateTokens(user, sessionId);
 
     // Determine domain for cookies (use .vyntrise.com in production)
     const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
@@ -63,7 +68,7 @@ export const login = async (req: Request, res: Response) => {
     res.cookie('vyntrise_session', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax', 
+      sameSite: 'lax',
       domain: cookieDomain,
       maxAge: 15 * 60 * 1000 // 15 mins (matches JWT expiration)
     });
@@ -72,6 +77,7 @@ export const login = async (req: Request, res: Response) => {
     const hashedToken = await bcrypt.hash(refreshToken, 10);
     await prisma.session.create({
       data: {
+        id: sessionId,
         userId: user.id,
         hashedToken,
         userAgent: req.headers['user-agent'] ?? null,
@@ -90,30 +96,42 @@ export const logout = async (req: Request, res: Response) => {
   const refreshToken = req.cookies?.refreshToken;
   const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
 
-  // Delete the matching session record if a refresh token is present
   if (refreshToken) {
     try {
-      // Decode the access token to get userId for scoping the session lookup
-      const accessToken = req.cookies?.vyntrise_session;
-      let userId: string | undefined;
-      if (accessToken) {
-        try {
-          const decoded = jwt.verify(accessToken, process.env.JWT_SECRET as string) as { id: string };
-          userId = decoded.id;
-        } catch {
-          // Access token may be expired — try to decode without verification to get the userId
-          const decoded = jwt.decode(accessToken) as { id: string } | null;
-          userId = decoded?.id;
-        }
+      let sessionId: string | undefined;
+      try {
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as { sessionId?: string };
+        sessionId = decoded.sessionId;
+      } catch {
+        // Refresh token invalid/expired — nothing to look up, fall through.
       }
 
-      if (userId) {
-        const sessions = await prisma.session.findMany({ where: { userId } });
-        for (const session of sessions) {
-          const matches = await bcrypt.compare(refreshToken, session.hashedToken);
-          if (matches) {
-            await prisma.session.delete({ where: { id: session.id } });
-            break;
+      if (sessionId) {
+        await prisma.session.delete({ where: { id: sessionId } }).catch(() => {});
+      } else {
+        // Legacy fallback for refresh tokens issued before sessionId was added to the
+        // payload — only reachable for up to 7 days after this deploy.
+        const accessToken = req.cookies?.vyntrise_session;
+        let userId: string | undefined;
+        if (accessToken) {
+          try {
+            const decoded = jwt.verify(accessToken, process.env.JWT_SECRET as string) as { id: string };
+            userId = decoded.id;
+          } catch {
+            // Access token may be expired — try to decode without verification to get the userId
+            const decoded = jwt.decode(accessToken) as { id: string } | null;
+            userId = decoded?.id;
+          }
+        }
+
+        if (userId) {
+          const sessions = await prisma.session.findMany({ where: { userId } });
+          for (const session of sessions) {
+            const matches = await bcrypt.compare(refreshToken, session.hashedToken);
+            if (matches) {
+              await prisma.session.delete({ where: { id: session.id } });
+              break;
+            }
           }
         }
       }
@@ -134,21 +152,31 @@ export const refresh = async (req: Request, res: Response) => {
     return res.status(401).json({ message: 'Refresh token not found' });
   }
 
-  let decoded: { id: string; email: string };
+  let decoded: { id: string; email: string; sessionId?: string };
   try {
-    decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as { id: string; email: string };
+    decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as typeof decoded;
   } catch {
     return res.status(403).json({ message: 'Invalid refresh token' });
   }
 
-  // Find the session that matches the incoming refresh token
-  const sessions = await prisma.session.findMany({ where: { userId: decoded.id } });
-  let matchedSession: (typeof sessions)[number] | undefined;
-  for (const session of sessions) {
-    const matches = await bcrypt.compare(refreshToken, session.hashedToken);
-    if (matches) {
+  type SessionRow = Awaited<ReturnType<typeof prisma.session.findUnique>>;
+  let matchedSession: SessionRow = null;
+
+  if (decoded.sessionId) {
+    // Fast path: the session id is embedded in the token, so this is a single indexed
+    // lookup instead of a bcrypt scan over every session the user has.
+    const session = await prisma.session.findUnique({ where: { id: decoded.sessionId } });
+    if (session && session.userId === decoded.id && await bcrypt.compare(refreshToken, session.hashedToken)) {
       matchedSession = session;
-      break;
+    }
+  } else {
+    // Legacy fallback for refresh tokens issued before sessionId was added to the payload.
+    const sessions = await prisma.session.findMany({ where: { userId: decoded.id } });
+    for (const session of sessions) {
+      if (await bcrypt.compare(refreshToken, session.hashedToken)) {
+        matchedSession = session;
+        break;
+      }
     }
   }
 
@@ -161,7 +189,7 @@ export const refresh = async (req: Request, res: Response) => {
     return res.status(403).json({ message: 'User not found' });
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens({ id: user.id, email: user.email });
+  const { accessToken, refreshToken: newRefreshToken } = generateTokens({ id: user.id, email: user.email }, matchedSession.id);
   const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
 
   // Rotate the stored hashed token and update lastUsedAt
