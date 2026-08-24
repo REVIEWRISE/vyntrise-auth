@@ -68,6 +68,6 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
     req.user = { id: decoded.id, email: decoded.email, sessionId: decoded.sessionId };
     next();
   } catch {
-    res.status(403).json({ message: 'Forbidden or Token Expired' });
+    res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
