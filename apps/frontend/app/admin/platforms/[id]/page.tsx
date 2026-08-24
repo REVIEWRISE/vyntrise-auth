@@ -86,7 +86,7 @@ export default function PlatformDetailPage() {
   );
 
   const AUTH_BASE = 'https://auth.vyntrise.com';
-  const loginUrl = `${AUTH_BASE}/login?platformId=${platform.id}&redirectUrl=https://your-app.com/auth/callback`;
+  const loginUrl = `${AUTH_BASE}/login?platformId=${platform.id}&redirectUrl=https://yourapp.vyntrise.com/auth/callback`;
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -138,11 +138,16 @@ export default function PlatformDetailPage() {
           <IC>auth.vyntrise.com</IC> for authentication, then returned to your app with a signed JWT.
         </p>
         <div className="flex items-center gap-2 flex-wrap p-4 rounded-lg bg-zinc-900/50 border border-zinc-800 text-sm">
-          <div className="px-3 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-300 font-mono text-xs">User visits your-app.com</div>
+          <div className="px-3 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-300 font-mono text-xs">User visits yourapp.vyntrise.com</div>
           <span className="text-zinc-600">→</span>
           <div className="px-3 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs">auth.vyntrise.com/login</div>
           <span className="text-zinc-600">→</span>
-          <div className="px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/30 text-green-300 font-mono text-xs">your-app.com/callback?token=...</div>
+          <div className="px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/30 text-green-300 font-mono text-xs">yourapp.vyntrise.com/callback?token=...</div>
+        </div>
+        <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+          <IC>redirectUrl</IC> must be an <IC>https://*.vyntrise.com</IC> subdomain — the login
+          page rejects any other host (and any non-<IC>https:</IC> scheme) before it will attach
+          a token and redirect there.
         </div>
       </div>
 
@@ -154,8 +159,10 @@ export default function PlatformDetailPage() {
         </p>
         <CodeBlock lang="url" code={loginUrl} />
         <p className="text-sm text-zinc-500 mt-1">
-          Replace <IC>https://your-app.com/auth/callback</IC> with your app's actual callback URL.
-          The <IC>platformId</IC> is pre-filled with this platform's ID.
+          Replace <IC>https://yourapp.vyntrise.com/auth/callback</IC> with your app's actual
+          callback URL — it must be an <IC>https://*.vyntrise.com</IC> subdomain, or the login
+          page will refuse to redirect there. The <IC>platformId</IC> is pre-filled with this
+          platform's ID.
         </p>
 
         <div className="mt-4">
@@ -171,6 +178,8 @@ export function middleware(req: NextRequest) {
   if (!token) {
     const loginUrl = new URL('https://auth.vyntrise.com/login');
     loginUrl.searchParams.set('platformId', '${platform.id}');
+    // req.nextUrl.origin must be an https://*.vyntrise.com subdomain — the login
+    // page rejects any other redirectUrl host.
     loginUrl.searchParams.set('redirectUrl', \`\${req.nextUrl.origin}/auth/callback\`);
     return NextResponse.redirect(loginUrl);
   }
@@ -284,7 +293,7 @@ const user = await res.json();
           Add your app's domain to <IC>ALLOWED_ORIGINS</IC> in the auth server's <IC>.env</IC>, then
           recreate the backend container to pick up the change.
         </p>
-        <CodeBlock lang=".env (on the auth server)" code={`ALLOWED_ORIGINS=https://auth.vyntrise.com,https://your-app.com`} />
+        <CodeBlock lang=".env (on the auth server)" code={`ALLOWED_ORIGINS=https://auth.vyntrise.com,https://yourapp.vyntrise.com`} />
         <CodeBlock lang="bash" code={`# SSH to auth.vyntrise.com server, then:
 cd ~/vyntrise-auth
 nano .env  # update ALLOWED_ORIGINS

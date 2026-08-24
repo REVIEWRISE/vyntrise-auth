@@ -131,7 +131,7 @@ export default function DocsPage() {
             <CardContent className="pt-4 pb-3">
               <div className="flex items-center gap-2 flex-wrap text-sm">
                 <div className="px-3 py-1.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-300 font-mono text-xs">
-                  User visits your-app.com
+                  User visits yourapp.vyntrise.com
                 </div>
                 <ChevronRight className="h-4 w-4 text-zinc-600 shrink-0" />
                 <div className="px-3 py-1.5 rounded-md bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs">
@@ -139,7 +139,7 @@ export default function DocsPage() {
                 </div>
                 <ChevronRight className="h-4 w-4 text-zinc-600 shrink-0" />
                 <div className="px-3 py-1.5 rounded-md bg-green-500/10 border border-green-500/30 text-green-300 font-mono text-xs">
-                  your-app.com/callback?token=...
+                  yourapp.vyntrise.com/callback?token=...
                 </div>
               </div>
             </CardContent>
@@ -233,7 +233,9 @@ export default function DocsPage() {
                 </tr>
                 <tr>
                   <td className="px-4 py-2.5"><InlineCode>redirectUrl</InlineCode></td>
-                  <td className="px-4 py-2.5 text-zinc-400">Full callback URL in your app</td>
+                  <td className="px-4 py-2.5 text-zinc-400">
+                    Full callback URL in your app — must be <InlineCode>https://*.vyntrise.com</InlineCode>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -243,6 +245,15 @@ export default function DocsPage() {
           <CodeBlock language="url" code={`https://auth.vyntrise.com/login
   ?platformId=e4ddbaa4-ac57-4485-b634-667498e8d408
   &redirectUrl=https://sms.vyntrise.com/auth/callback`} />
+
+          <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+            <p className="text-xs text-amber-400">
+              <InlineCode>redirectUrl</InlineCode> must be an <InlineCode>https://*.vyntrise.com</InlineCode>{' '}
+              subdomain — the login page checks this before it will attach a token and redirect
+              there, both to prevent leaking tokens to arbitrary hosts and because the refresh-token
+              cookie (see Step 6) only reaches same-site subdomains anyway.
+            </p>
+          </div>
 
           <p className="text-sm text-zinc-400">
             The auth system verifies the user has access to that platform before issuing a token.
