@@ -117,7 +117,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               className="w-full justify-start gap-3 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800"
               onClick={() => {
                 localStorage.removeItem('accessToken');
-                router.push('/login');
+                router.replace('/login');
               }}
             >
               <LogOut className="h-4 w-4" />
@@ -146,7 +146,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
-      router.push('/login');
+      router.replace('/login');
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAuthenticated(true);

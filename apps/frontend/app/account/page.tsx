@@ -88,7 +88,7 @@ export default function AccountPage() {
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
-      router.push('/login');
+      router.replace('/login');
       return;
     }
 
@@ -213,7 +213,7 @@ export default function AccountPage() {
       const data = await res.json();
       if (res.ok) {
         localStorage.removeItem('accessToken');
-        router.push('/login');
+        router.replace('/login');
       } else {
         setDeleteError(data.message || 'Failed to delete account');
       }
@@ -259,7 +259,7 @@ export default function AccountPage() {
               size="sm"
               onClick={() => {
                 localStorage.removeItem('accessToken');
-                router.push('/login');
+                router.replace('/login');
               }}
               className="text-zinc-400 hover:text-zinc-100"
             >

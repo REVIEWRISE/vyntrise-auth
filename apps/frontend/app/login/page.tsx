@@ -61,14 +61,14 @@ function LoginForm() {
               url.searchParams.append('token', data.accessToken);
               window.location.href = url.toString();
             } else {
-              router.push('/admin');
+              router.replace('/admin');
             }
           } catch {
             // Invalid URL — fall through to default
-            router.push('/admin');
+            router.replace('/admin');
           }
         } else {
-          router.push('/admin');
+          router.replace('/admin');
         }
       } else {
         setError(data.message || 'Login failed');

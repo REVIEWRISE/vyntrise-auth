@@ -50,7 +50,7 @@ export function AdminPlatformProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (status === 'denied') router.push('/account');
+    if (status === 'denied') router.replace('/account');
   }, [status, router]);
 
   const setPlatformId = (id: string) => {
