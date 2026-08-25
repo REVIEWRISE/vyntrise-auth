@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Mail, UserPlus, Globe, ShieldOff, Activity } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api';
+import { useAdminPlatform } from './admin-platform-context';
 
 interface ActivityLog {
   id: string;
@@ -42,16 +43,19 @@ function describeActivity(log: ActivityLog): string {
 }
 
 export default function AdminDashboard() {
+  const { platformId } = useAdminPlatform();
   const [stats, setStats] = useState<{totalUsers: number, pendingInvites: number, recentActivity: ActivityLog[]} | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!platformId) return;
+
     const fetchStats = async () => {
       try {
-        const res = await apiFetch('/api/admin/stats');
-        
+        const res = await apiFetch(`/api/admin/stats?platformId=${platformId}`);
+
         if (!res.ok) throw new Error('Failed to fetch stats');
-        
+
         const data = await res.json();
         setStats(data);
       } catch (err) {
@@ -60,7 +64,7 @@ export default function AdminDashboard() {
     };
 
     fetchStats();
-  }, []);
+  }, [platformId]);
 
   if (error) return (
     <div className="p-4 rounded-md bg-red-500/10 border border-red-500/20 text-red-400">

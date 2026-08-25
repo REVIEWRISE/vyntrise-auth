@@ -13,18 +13,22 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 
 import { apiFetch } from '@/lib/api';
+import { useAdminPlatform } from '../admin-platform-context';
 
 export default function AdminUsers() {
+  const { platformId } = useAdminPlatform();
   const [users, setUsers] = useState<Array<{ id: string, email: string, role: string, accessCreatedAt: string }>>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!platformId) return;
+
     const fetchUsers = async () => {
       try {
-        const res = await apiFetch('/api/admin/users');
-        
+        const res = await apiFetch(`/api/admin/users?platformId=${platformId}`);
+
         if (!res.ok) throw new Error('Failed to fetch users');
-        
+
         const data = await res.json();
         setUsers(data);
       } catch (err) {
@@ -33,7 +37,7 @@ export default function AdminUsers() {
     };
 
     fetchUsers();
-  }, []);
+  }, [platformId]);
 
   if (error) return (
     <div className="p-4 rounded-md bg-red-500/10 border border-red-500/20 text-red-400">

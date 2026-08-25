@@ -24,28 +24,26 @@ interface Invite {
   };
 }
 
-interface Platform {
-  id: string;
-  name: string;
-  description: string | null;
-}
-
 import { apiFetch } from '@/lib/api';
+import { useAdminPlatform } from '../admin-platform-context';
 
 export default function AdminInvites() {
+  const { platformId: currentPlatformId, platforms } = useAdminPlatform();
   const [invites, setInvites] = useState<Invite[]>([]);
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('USER');
-  const [platformId, setPlatformId] = useState('');
+  // Invite target platform defaults to whatever's selected in the sidebar switcher, but stays
+  // independently overridable — an admin may want to invite someone to a different platform
+  // than the one they're currently viewing.
+  const [platformId, setPlatformId] = useState(currentPlatformId);
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const fetchInvites = async () => {
+  const fetchInvites = async (forPlatformId: string) => {
     try {
-      const res = await apiFetch('/api/admin/invites');
+      const res = await apiFetch(`/api/admin/invites?platformId=${forPlatformId}`);
       if (!res.ok) throw new Error('Failed to fetch invites');
       const data = await res.json();
       setInvites(data);
@@ -54,25 +52,9 @@ export default function AdminInvites() {
     }
   };
 
-  const fetchPlatforms = async () => {
-    try {
-      const res = await apiFetch('/api/admin/platforms');
-      if (!res.ok) throw new Error('Failed to fetch platforms');
-      const data = await res.json();
-      setPlatforms(data);
-      // Set the first platform as default
-      if (data.length > 0 && !platformId) {
-        setPlatformId(data[0].id);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  useEffect(() => { 
-    fetchInvites(); 
-    fetchPlatforms();
-  }, []);
+  useEffect(() => {
+    if (currentPlatformId) fetchInvites(currentPlatformId);
+  }, [currentPlatformId]);
 
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +80,7 @@ export default function AdminInvites() {
       setNewLink(data.registerLink);
       setEmail('');
       setRole('USER');
-      fetchInvites();
+      fetchInvites(currentPlatformId);
     } catch (err) {
       setError((err as Error).message);
     } finally {
