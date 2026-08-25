@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen, UserPlus, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -12,6 +12,7 @@ interface Platform {
   id: string;
   name: string;
   description: string | null;
+  allowSelfRegistration: boolean;
   createdAt: string;
   userCount: number;
 }
@@ -65,6 +66,25 @@ export default function PlatformDetailPage() {
   const [platform, setPlatform] = useState<Platform | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [togglingSelfReg, setTogglingSelfReg] = useState(false);
+
+  const toggleSelfRegistration = async () => {
+    if (!platform) return;
+    setTogglingSelfReg(true);
+    try {
+      const res = await apiFetch(`/api/admin/platforms/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ allowSelfRegistration: !platform.allowSelfRegistration }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to update platform');
+      setPlatform(data);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTogglingSelfReg(false);
+    }
+  };
 
   useEffect(() => {
     apiFetch(`/api/admin/platforms/${id}`)
@@ -149,6 +169,37 @@ export default function PlatformDetailPage() {
           page rejects any other host (and any non-<IC>https:</IC> scheme) before it will attach
           a token and redirect there.
         </div>
+      </div>
+
+      {/* Self-registration */}
+      <div>
+        <SectionHeader icon={UserPlus} title="Self-Registration" color="bg-teal-500/10 border border-teal-500/20 text-teal-400" />
+        <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
+          <div>
+            <p className="text-sm text-zinc-300">
+              {platform.allowSelfRegistration
+                ? 'Anyone with the sign-up link below can create an account on this platform.'
+                : 'Closed — new users must be invited by an admin.'}
+            </p>
+          </div>
+          <Button
+            onClick={toggleSelfRegistration}
+            disabled={togglingSelfReg}
+            variant={platform.allowSelfRegistration ? 'outline' : 'default'}
+            className={platform.allowSelfRegistration
+              ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+              : 'bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold'}
+          >
+            {togglingSelfReg
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : platform.allowSelfRegistration ? 'Disable' : 'Enable'}
+          </Button>
+        </div>
+        {platform.allowSelfRegistration && (
+          <div className="mt-3">
+            <CodeBlock lang="url" code={`${AUTH_BASE}/register?platformId=${platform.id}`} />
+          </div>
+        )}
       </div>
 
       {/* Step 1 */}
@@ -342,6 +393,9 @@ if (res.status === 401) {
             <tbody className="divide-y divide-zinc-800/50">
               {[
                 { method: 'GET', path: `/login?platformId=${platform.id}&redirectUrl=...`, desc: 'SSO login entry point' },
+                ...(platform.allowSelfRegistration
+                  ? [{ method: 'GET', path: `/register?platformId=${platform.id}`, desc: 'SSO self-registration entry point' }]
+                  : []),
                 { method: 'GET', path: '/api/account/me', desc: 'Get user profile + platform roles' },
                 { method: 'POST', path: '/api/auth/refresh', desc: 'Refresh access token via cookie' },
                 { method: 'POST', path: '/api/auth/logout', desc: 'Logout and clear session' },

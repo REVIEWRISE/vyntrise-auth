@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Loader2 } from 'lucide-react';
 
 function RegisterForm() {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,15 +18,17 @@ function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const token = searchParams.get('token');
+  const platformId = searchParams.get('platformId');
+  const mode = token ? 'invite' : platformId ? 'open' : null;
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    const token = searchParams.get('token');
-
-    if (!token) {
-      setError('Invalid or missing invitation token.');
+    if (!mode) {
+      setError('Invalid or missing invitation token, or no platform specified.');
       return;
     }
 
@@ -42,10 +45,12 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/invite/register', {
+      const response = await fetch(mode === 'invite' ? '/api/invite/register' : '/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify(
+          mode === 'invite' ? { token, password } : { email, password, platformId }
+        ),
       });
 
       const data = await response.json();
@@ -76,6 +81,20 @@ function RegisterForm() {
         </div>
       )}
       <form onSubmit={handleRegister} className="space-y-4">
+        {mode === 'open' && (
+          <div className="space-y-2">
+            <Label htmlFor="email" className="text-zinc-200">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="bg-zinc-950/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
+            />
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="password" className="text-zinc-200">Create Password</Label>
           <Input
@@ -103,7 +122,7 @@ function RegisterForm() {
         <Button
           type="submit"
           className="w-full mt-6 bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold"
-          disabled={loading}
+          disabled={loading || !mode}
         >
           {loading ? (
             <>

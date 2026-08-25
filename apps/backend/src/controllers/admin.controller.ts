@@ -224,6 +224,7 @@ export const getPlatformById = async (req: Request, res: Response) => {
       id: platform.id,
       name: platform.name,
       description: platform.description,
+      allowSelfRegistration: platform.allowSelfRegistration,
       createdAt: platform.createdAt,
       userCount,
     });
@@ -233,9 +234,45 @@ export const getPlatformById = async (req: Request, res: Response) => {
   }
 };
 
+export const updatePlatformSettings = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const userId = (req as any).user?.id;
+
+    // Scoped to this specific platform, not "admin of any platform" — same reasoning as
+    // getPlatformById: otherwise an admin of platform A could edit platform B by guessing its id.
+    const access = await prisma.userPlatformAccess.findFirst({
+      where: { userId, platformId: id, role: 'ADMIN' },
+    });
+    if (!access) {
+      return res.status(403).json({ message: 'Forbidden: Admin access required for this platform' });
+    }
+
+    const { allowSelfRegistration } = req.body;
+    const platform = await prisma.platform.update({
+      where: { id },
+      data: { allowSelfRegistration: !!allowSelfRegistration },
+    });
+
+    const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+
+    res.json({
+      id: platform.id,
+      name: platform.name,
+      description: platform.description,
+      allowSelfRegistration: platform.allowSelfRegistration,
+      createdAt: platform.createdAt,
+      userCount,
+    });
+  } catch (error) {
+    console.error('updatePlatformSettings error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const createPlatform = async (req: Request, res: Response) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, allowSelfRegistration } = req.body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return res.status(400).json({ message: 'Platform name is required' });
@@ -247,7 +284,11 @@ export const createPlatform = async (req: Request, res: Response) => {
     }
 
     const platform = await prisma.platform.create({
-      data: { name: name.trim(), description: description?.trim() || null },
+      data: {
+        name: name.trim(),
+        description: description?.trim() || null,
+        allowSelfRegistration: !!allowSelfRegistration,
+      },
     });
 
     // Auto-grant the creating admin access to the new platform

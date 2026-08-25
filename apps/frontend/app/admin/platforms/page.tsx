@@ -29,6 +29,7 @@ export default function AdminPlatforms() {
   const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
@@ -63,7 +64,7 @@ export default function AdminPlatforms() {
     try {
       const res = await apiFetch('/api/admin/platforms', {
         method: 'POST',
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, allowSelfRegistration }),
       });
 
       const data = await res.json();
@@ -72,6 +73,7 @@ export default function AdminPlatforms() {
       setCreateSuccess(`Platform "${data.name}" created successfully`);
       setName('');
       setDescription('');
+      setAllowSelfRegistration(false);
       fetchPlatforms();
     } catch (err) {
       setCreateError((err as Error).message);
@@ -210,6 +212,16 @@ export default function AdminPlatforms() {
                     className="bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-600"
                   />
                 </div>
+                <label htmlFor="plat-self-reg" className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    id="plat-self-reg"
+                    type="checkbox"
+                    checked={allowSelfRegistration}
+                    onChange={(e) => setAllowSelfRegistration(e.target.checked)}
+                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-zinc-50"
+                  />
+                  <span className="text-sm text-zinc-300">Allow self-registration</span>
+                </label>
                 <Button
                   type="submit"
                   disabled={creating}

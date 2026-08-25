@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../db/prisma';
+import { logActivity } from '../services/audit.service';
 
 const generateTokens = (user: { id: string, email: string }, sessionId: string) => {
   const accessToken = jwt.sign(
@@ -91,6 +92,58 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
+
+export const register = async (req: Request, res: Response) => {
+  try {
+    const { email, password, platformId } = req.body;
+
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Valid email address is required' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: 'password must be at least 8 characters' });
+    }
+    if (!platformId || typeof platformId !== 'string') {
+      return res.status(400).json({ message: 'platformId is required' });
+    }
+
+    const platform = await prisma.platform.findUnique({ where: { id: platformId } });
+    if (!platform) {
+      return res.status(404).json({ message: 'Platform not found' });
+    }
+    if (!platform.allowSelfRegistration) {
+      return res.status(403).json({ message: 'This platform does not allow self-registration' });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ message: 'An account with this email already exists. Please log in.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: { email, password: hashedPassword },
+    });
+
+    await prisma.userPlatformAccess.create({
+      data: { userId: user.id, platformId, role: 'USER' },
+    });
+
+    logActivity({
+      action: 'USER_SELF_REGISTERED',
+      platformId,
+      actorId: user.id,
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { email },
+    });
+
+    res.status(201).json({ message: 'Account created successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
 export const logout = async (req: Request, res: Response) => {
   const refreshToken = req.cookies?.refreshToken;

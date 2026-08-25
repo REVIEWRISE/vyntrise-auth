@@ -9,6 +9,7 @@ import {
   getPlatforms,
   getPlatformById,
   createPlatform,
+  updatePlatformSettings,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -25,5 +26,7 @@ router.post('/platforms', authenticateJWT, requireAdmin, createPlatform);
 // getPlatformById does its own platform-specific admin check (route param, not query/body),
 // so it doesn't go through the generic requireAdmin middleware.
 router.get('/platforms/:id', authenticateJWT, getPlatformById);
+// updatePlatformSettings does its own platform-specific admin check, same as getPlatformById.
+router.patch('/platforms/:id', authenticateJWT, updatePlatformSettings);
 
 export default router;

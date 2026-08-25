@@ -5,6 +5,7 @@ export type AuditAction =
   | 'PLATFORM_CREATED'
   | 'INVITE_CREATED'
   | 'USER_JOINED_PLATFORM'
+  | 'USER_SELF_REGISTERED'
   | 'SESSION_REVOKED';
 
 interface LogActivityParams {

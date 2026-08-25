@@ -21,11 +21,12 @@ model User {
 }
 
 model Platform {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  name                   String   @unique
+  description            String?
+  allowSelfRegistration  Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   users       UserPlatformAccess[]
   invitations Invitation[]

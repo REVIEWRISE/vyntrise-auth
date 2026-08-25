@@ -66,7 +66,7 @@ function InlineCode({ children }: { children: React.ReactNode }) {
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: BookOpen },
   { id: 'setup', label: '1. Create Platform', icon: Globe },
-  { id: 'invite', label: '2. Invite Users', icon: Users },
+  { id: 'invite', label: '2. Onboard Users', icon: Users },
   { id: 'redirect', label: '3. Redirect Flow', icon: Zap },
   { id: 'callback', label: '4. Handle Callback', icon: ChevronRight },
   { id: 'token', label: '5. Use Token', icon: Key },
@@ -180,11 +180,15 @@ export default function DocsPage() {
         </Section>
 
         {/* Step 2 */}
-        <Section id="invite" icon={Users} title="Step 2 — Invite Users">
+        <Section id="invite" icon={Users} title="Step 2 — Onboard Users">
           <p>
-            Users can only access the system via admin-issued invitations — there is no public registration.
-            Invitations are <strong className="text-zinc-200">platform-specific</strong>.
+            There are two ways users get access to a platform: an admin-issued invitation
+            (default, works for every platform), or self-registration (opt-in per platform).
+            Either way, the auth service is the only thing that ever handles a password —
+            your app just links or redirects to <InlineCode>auth.vyntrise.com</InlineCode>.
           </p>
+
+          <h3 className="font-medium text-zinc-100 mt-6 mb-2">Option A — Admin invites (default)</h3>
           <div className="space-y-4 mt-2">
             <Step number={1} title="Open Invitations">
               <p>Go to <InlineCode>https://auth.vyntrise.com/admin/invites</InlineCode></p>
@@ -207,6 +211,38 @@ export default function DocsPage() {
             <p className="text-zinc-400">
               A user can be invited to <strong className="text-zinc-200">multiple platforms</strong> with different roles.
               Each invitation is independent.
+            </p>
+          </div>
+
+          <h3 className="font-medium text-zinc-100 mt-6 mb-2">Option B — Self-registration (opt-in)</h3>
+          <div className="space-y-4 mt-2">
+            <Step number={1} title="Enable it on your platform">
+              <p>
+                Open your platform's page under <InlineCode>https://auth.vyntrise.com/admin/platforms</InlineCode>{' '}
+                and turn on <strong className="text-zinc-200">Self-Registration</strong>. It's off by default —
+                every platform starts invite-only.
+              </p>
+            </Step>
+            <Step number={2} title="Share the sign-up link">
+              <p>Link to (or redirect unauthenticated users who want an account to) this URL — it's shown on the platform page once enabled:</p>
+              <CodeBlock language="url" code={`https://auth.vyntrise.com/register?platformId={PLATFORM_ID}`} />
+            </Step>
+            <Step number={3} title="User completes sign-up, then logs in">
+              <p>
+                The user enters an email and password on the hosted page, which calls{' '}
+                <InlineCode>POST /api/auth/register</InlineCode> and creates a <InlineCode>USER</InlineCode>-role
+                account on that platform. They're then redirected to <InlineCode>/login</InlineCode> — from there,
+                the normal Step 3 redirect flow applies.
+              </p>
+            </Step>
+          </div>
+          <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+            <p className="text-xs text-amber-400">
+              Don't build your own sign-up form and call <InlineCode>/api/auth/register</InlineCode> directly from
+              your app's frontend — that would mean handling passwords yourself and needing CORS opened for a
+              credentials-bearing endpoint. Redirect to the hosted page instead, the same way Step 3 redirects
+              to <InlineCode>/login</InlineCode> rather than calling <InlineCode>/api/auth/login</InlineCode> from
+              your own UI.
             </p>
           </div>
         </Section>
@@ -442,6 +478,7 @@ if (res.status === 401) {
               <tbody className="divide-y divide-zinc-800/50">
                 {[
                   ['/login?platformId=X&redirectUrl=Y', 'SSO login entry point'],
+                  ['/register?platformId=X', 'SSO self-registration entry point (if enabled)'],
                   ['/api/auth/refresh', 'Refresh access token (POST)'],
                   ['/api/auth/logout', 'Logout and clear session (POST)'],
                   ['/api/account/me', 'Get user profile + platform memberships (GET)'],
