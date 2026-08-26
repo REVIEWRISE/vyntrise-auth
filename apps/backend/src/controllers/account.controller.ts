@@ -4,6 +4,7 @@ import prisma from '../db/prisma';
 import { emailService } from '../services/email.service';
 import { logActivity } from '../services/audit.service';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { BCRYPT_ROUNDS } from '../config/env';
 
 // GET /api/account/me
 export const getMe = async (req: AuthRequest, res: Response) => {
@@ -120,7 +121,7 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.user.update({
       where: { id: req.user!.id },
       data: { password: hashedPassword },

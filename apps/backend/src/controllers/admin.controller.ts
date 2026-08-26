@@ -3,6 +3,7 @@ import prisma from '../db/prisma';
 import crypto from 'crypto';
 import { emailService } from '../services/email.service';
 import { logActivity } from '../services/audit.service';
+import { hashToken } from '../utils/token';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
@@ -77,10 +78,17 @@ export const getInvites = async (req: Request, res: Response) => {
 
     const invites = await prisma.invitation.findMany({
       where: { platformId },
-      include: {
-        platform: {
-          select: { name: true }
-        }
+      // The token is deliberately not selected — the list view never renders it, and an
+      // invite token is a credential that shouldn't ride along in an API response.
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isUsed: true,
+        expiresAt: true,
+        createdAt: true,
+        platformId: true,
+        platform: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -116,11 +124,14 @@ export const createInvite = async (req: Request, res: Response) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
+    // Only the digest is persisted — the raw token exists solely in the link below.
+    const storedToken = hashToken(token);
+
     // Store the role in the invitation so it can be applied during registration
     const invitation = await prisma.invitation.upsert({
       where: { email_platformId: { email, platformId } },
-      update: { token, expiresAt, isUsed: false, role },
-      create: { email, platformId, token, expiresAt, role },
+      update: { token: storedToken, expiresAt, isUsed: false, role },
+      create: { email, platformId, token: storedToken, expiresAt, role },
     });
 
     const registerLink = `${process.env.FRONTEND_URL}/register?token=${token}`;
@@ -152,7 +163,7 @@ export const createInvite = async (req: Request, res: Response) => {
 
     res.status(201).json({
       message: 'Invitation created',
-      token: invitation.token,
+      token,
       registerLink,
     });
   } catch (error) {
@@ -249,10 +260,29 @@ export const updatePlatformSettings = async (req: Request, res: Response) => {
     }
 
     const { allowSelfRegistration } = req.body;
+    const previous = await prisma.platform.findUnique({ where: { id } });
+
     const platform = await prisma.platform.update({
       where: { id },
       data: { allowSelfRegistration: !!allowSelfRegistration },
     });
+
+    // Opening a platform to public sign-up is a security-relevant change, so it needs the same
+    // trail as platform and invite creation.
+    if (previous && previous.allowSelfRegistration !== platform.allowSelfRegistration) {
+      logActivity({
+        action: 'PLATFORM_SETTINGS_CHANGED',
+        platformId: id,
+        actorId: userId,
+        targetType: 'platform',
+        targetId: id,
+        metadata: {
+          setting: 'allowSelfRegistration',
+          from: previous.allowSelfRegistration,
+          to: platform.allowSelfRegistration,
+        },
+      });
+    }
 
     const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
 

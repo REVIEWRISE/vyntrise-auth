@@ -9,22 +9,39 @@ import passwordResetRoutes from './routes/password-reset.routes';
 import accountRoutes from './routes/account.routes';
 import { emailService } from './services/email.service';
 import { authenticateJWT } from './middlewares/auth.middleware';
+import { assertRequiredEnv } from './config/env';
 
 dotenv.config();
+assertRequiredEnv();
 
 const app = express();
 const PORT = process.env.PORT || 3021;
 
+// Behind nginx, req.ip is the proxy's address unless Express is told to read
+// X-Forwarded-For — without this every caller shares one rate-limit bucket.
+app.set('trust proxy', 1);
+
 // Middlewares
 // CORS configuration for cross-origin requests from external platforms
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || ['http://localhost:3001'];
+
+// A wildcard origin cannot be combined with credentials: it would let any site on the internet
+// make authenticated requests with the user's cookies. Refuse to start rather than silently
+// running wide open.
+if (allowedOrigins.includes('*')) {
+  console.error(
+    'ALLOWED_ORIGINS contains "*", which cannot be used with credentialed CORS. ' +
+    'List each permitted origin explicitly.'
+  );
+  process.exit(1);
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    
-    // Check if origin is in allowed list or if we're using wildcard
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked request from origin: ${origin}`);

@@ -4,6 +4,14 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../db/prisma';
 import { logActivity } from '../services/audit.service';
+import { BCRYPT_ROUNDS } from '../config/env';
+
+// A hash of an unguessable value, compared against when no user is found so the "no such
+// account" path costs the same as a wrong password — otherwise the timing difference alone
+// reveals which addresses are registered. Generated at load so it is always a well-formed
+// hash at the current cost factor; a hand-written constant risks bcrypt rejecting the format
+// and returning early, which would defeat the purpose silently.
+const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
 
 const generateTokens = (user: { id: string, email: string }, sessionId: string) => {
   const accessToken = jwt.sign(
@@ -30,12 +38,16 @@ export const login = async (req: Request, res: Response) => {
       include: { platforms: true }
     });
 
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+    // Always run a comparison, even with no user, so both paths take the same time.
+    const isPasswordValid = await bcrypt.compare(password, user?.password ?? DUMMY_HASH);
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
+    if (!user || !isPasswordValid) {
+      logActivity({
+        action: 'LOGIN_FAILED',
+        actorId: user?.id,
+        targetType: 'user',
+        metadata: { email: String(email ?? ''), reason: user ? 'bad_password' : 'no_such_user' },
+      });
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -74,7 +86,9 @@ export const login = async (req: Request, res: Response) => {
       maxAge: 15 * 60 * 1000 // 15 mins (matches JWT expiration)
     });
 
-    // Persist a session record with a hashed copy of the refresh token
+    // Persist a session record with a hashed copy of the refresh token. Deliberately left at
+    // cost 10 rather than BCRYPT_ROUNDS: refresh tokens are high-entropy JWTs, not guessable
+    // secrets, so the extra work factor buys nothing and this sits on the login/refresh path.
     const hashedToken = await bcrypt.hash(refreshToken, 10);
     await prisma.session.create({
       data: {
@@ -120,7 +134,7 @@ export const register = async (req: Request, res: Response) => {
       return res.status(409).json({ message: 'An account with this email already exists. Please log in.' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const user = await prisma.user.create({
       data: { email, password: hashedPassword },
     });

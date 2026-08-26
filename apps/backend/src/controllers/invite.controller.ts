@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
 import { logActivity } from '../services/audit.service';
+import { hashToken } from '../utils/token';
+import { BCRYPT_ROUNDS } from '../config/env';
 
 export const registerViaInvite = async (req: Request, res: Response) => {
   try {
@@ -11,8 +13,11 @@ export const registerViaInvite = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'password must be at least 8 characters' });
     }
 
-    const invitation = await prisma.invitation.findUnique({
-      where: { token },
+    // Invitations created before tokens were hashed still hold the raw value, so the lookup
+    // accepts either. Invites expire after 7 days, so the legacy arm can be removed any time
+    // after that window has passed post-deploy.
+    const invitation = await prisma.invitation.findFirst({
+      where: { OR: [{ token: hashToken(token) }, { token }] },
       include: { platform: true }
     });
 
@@ -24,7 +29,7 @@ export const registerViaInvite = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Invitation has expired' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // Check if user already exists
     let user = await prisma.user.findUnique({ where: { email: invitation.email } });

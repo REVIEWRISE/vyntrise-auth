@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Mail, UserPlus, Globe, ShieldOff, Activity } from 'lucide-react';
+import { Users, Mail, UserPlus, Globe, ShieldOff, Activity, Settings, ShieldAlert } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api';
 import { useAdminPlatform } from './admin-platform-context';
@@ -19,9 +19,12 @@ interface ActivityLog {
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   PLATFORM_CREATED: Globe,
+  PLATFORM_SETTINGS_CHANGED: Settings,
   INVITE_CREATED: Mail,
   USER_JOINED_PLATFORM: UserPlus,
+  USER_SELF_REGISTERED: UserPlus,
   SESSION_REVOKED: ShieldOff,
+  LOGIN_FAILED: ShieldAlert,
 };
 
 function describeActivity(log: ActivityLog): string {
@@ -35,8 +38,14 @@ function describeActivity(log: ActivityLog): string {
       return `${actor} invited ${meta.email ?? 'a user'} as ${meta.role ?? 'USER'}`;
     case 'USER_JOINED_PLATFORM':
       return `${meta.email ?? actor} joined the platform`;
+    case 'USER_SELF_REGISTERED':
+      return `${meta.email ?? actor} signed up via self-registration`;
+    case 'PLATFORM_SETTINGS_CHANGED':
+      return `${actor} turned ${meta.setting ?? 'a setting'} ${meta.to ? 'on' : 'off'}`;
     case 'SESSION_REVOKED':
       return `${actor} revoked a session`;
+    case 'LOGIN_FAILED':
+      return `Failed sign-in attempt for ${meta.email || 'an unknown address'}`;
     default:
       return `${actor} performed ${log.action}`;
   }

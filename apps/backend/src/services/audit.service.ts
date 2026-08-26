@@ -3,10 +3,12 @@ import prisma from '../db/prisma';
 
 export type AuditAction =
   | 'PLATFORM_CREATED'
+  | 'PLATFORM_SETTINGS_CHANGED'
   | 'INVITE_CREATED'
   | 'USER_JOINED_PLATFORM'
   | 'USER_SELF_REGISTERED'
-  | 'SESSION_REVOKED';
+  | 'SESSION_REVOKED'
+  | 'LOGIN_FAILED';
 
 interface LogActivityParams {
   action: AuditAction;
