@@ -150,15 +150,50 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
 // GET /api/account/sessions
 export const getSessions = async (req: AuthRequest, res: Response) => {
   try {
-    const sessions = await prisma.session.findMany({ where: { userId: req.user!.id } });
+    const sessions = await prisma.session.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { lastUsedAt: 'desc' },
+    });
+    const currentSessionId = req.user!.sessionId;
     return res.json(
       sessions.map((s: { id: string; createdAt: Date; lastUsedAt: Date; userAgent: string | null }) => ({
         id: s.id,
         createdAt: s.createdAt,
         lastUsedAt: s.lastUsedAt,
         userAgent: s.userAgent,
+        // Lets the UI label "this device" so nobody signs themselves out trying to end
+        // someone else's session.
+        isCurrent: s.id === currentSessionId,
       }))
     );
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// DELETE /api/account/sessions — sign out everywhere except the current device
+export const revokeOtherSessions = async (req: AuthRequest, res: Response) => {
+  try {
+    const currentSessionId = req.user!.sessionId;
+
+    const { count } = await prisma.session.deleteMany({
+      where: {
+        userId: req.user!.id,
+        // A token predating sessionId can't identify which session is the caller's, so the
+        // safe reading is to end all of them rather than guess and leave an attacker signed in.
+        ...(currentSessionId ? { id: { not: currentSessionId } } : {}),
+      },
+    });
+
+    logActivity({
+      action: 'SESSION_REVOKED',
+      actorId: req.user!.id,
+      targetType: 'session',
+      metadata: { scope: 'all_other_devices', count },
+    });
+
+    return res.json({ message: `Signed out of ${count} other ${count === 1 ? 'device' : 'devices'}`, count });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Internal server error' });

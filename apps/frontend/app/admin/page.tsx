@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Mail, UserPlus, Globe, ShieldOff, Activity, Settings, ShieldAlert } from 'lucide-react';
+import { Users, Mail, UserPlus, UserMinus, Globe, Shield, ShieldOff, Activity, Settings, ShieldAlert } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api';
 import { useAdminPlatform } from './admin-platform-context';
@@ -21,8 +21,11 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   PLATFORM_CREATED: Globe,
   PLATFORM_SETTINGS_CHANGED: Settings,
   INVITE_CREATED: Mail,
+  INVITE_REVOKED: Mail,
   USER_JOINED_PLATFORM: UserPlus,
   USER_SELF_REGISTERED: UserPlus,
+  USER_ROLE_CHANGED: Shield,
+  USER_REMOVED_FROM_PLATFORM: UserMinus,
   SESSION_REVOKED: ShieldOff,
   LOGIN_FAILED: ShieldAlert,
 };
@@ -36,6 +39,12 @@ function describeActivity(log: ActivityLog): string {
       return `${actor} created platform "${meta.name ?? ''}"`;
     case 'INVITE_CREATED':
       return `${actor} invited ${meta.email ?? 'a user'} as ${meta.role ?? 'USER'}`;
+    case 'INVITE_REVOKED':
+      return `${actor} revoked the invitation for ${meta.email ?? 'a user'}`;
+    case 'USER_ROLE_CHANGED':
+      return `${actor} changed ${meta.email ?? 'a user'} from ${meta.from ?? '?'} to ${meta.to ?? '?'}`;
+    case 'USER_REMOVED_FROM_PLATFORM':
+      return `${actor} removed ${meta.email ?? 'a user'} from the platform`;
     case 'USER_JOINED_PLATFORM':
       return `${meta.email ?? actor} joined the platform`;
     case 'USER_SELF_REGISTERED':

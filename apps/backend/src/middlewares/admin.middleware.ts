@@ -2,6 +2,21 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import prisma from '../db/prisma';
 
+// requireAdmin falls back to "any platform this user administers" when no platformId is given,
+// which is tolerable for a read (worst case: the wrong list renders) but not for a mutation —
+// a missing parameter would silently delete a membership on some other platform. Destructive
+// routes name their platform explicitly or get rejected.
+export const requireExplicitPlatform = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const platformId = req.query.platformId || req.body?.platformId || req.headers['x-platform-id'];
+
+  if (!platformId) {
+    res.status(400).json({ message: 'platformId is required for this operation' });
+    return;
+  }
+
+  next();
+};
+
 export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const user = req.user;

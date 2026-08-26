@@ -31,6 +31,7 @@ interface Session {
   createdAt: string;
   lastUsedAt: string;
   userAgent: string | null;
+  isCurrent: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsError, setSessionsError] = useState('');
+  const [revokingOthers, setRevokingOthers] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -197,6 +199,21 @@ export default function AccountPage() {
       // If the request fails due to revoked session, redirect to login
       localStorage.removeItem('accessToken');
       router.push('/login?message=session-revoked');
+    }
+  }
+
+  async function handleRevokeOtherSessions() {
+    setSessionsError('');
+    setRevokingOthers(true);
+    try {
+      const res = await apiFetch('/api/account/sessions', { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to sign out other devices');
+      setSessions((prev) => prev.filter((s) => s.isCurrent));
+    } catch (err) {
+      setSessionsError((err as Error).message);
+    } finally {
+      setRevokingOthers(false);
     }
   }
 
@@ -424,9 +441,16 @@ export default function AccountPage() {
                     <div className="min-w-0">
                       <p className="text-zinc-100 text-sm truncate">
                         {session.userAgent || 'Unknown device'}
+                        {session.isCurrent && (
+                          <Badge className="ml-2 bg-green-500/15 text-green-400 border-0 align-middle">
+                            This device
+                          </Badge>
+                        )}
                       </p>
                       <p className="text-zinc-500 text-xs mt-0.5">
                         Started {new Date(session.createdAt).toLocaleDateString()}
+                        {' · '}
+                        Last used {new Date(session.lastUsedAt).toLocaleDateString()}
                       </p>
                     </div>
                     <Button
@@ -436,13 +460,31 @@ export default function AccountPage() {
                       className="shrink-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
-                      Revoke
+                      {session.isCurrent ? 'Sign out' : 'Revoke'}
                     </Button>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="text-zinc-500 text-sm">No active sessions found.</p>
+            )}
+
+            {sessions.filter((s) => !s.isCurrent).length > 0 && (
+              <div className="pt-3 border-t border-zinc-800">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRevokeOtherSessions}
+                  disabled={revokingOthers}
+                  className="text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800 -ml-2"
+                >
+                  {revokingOthers ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Signing out...</>
+                  ) : (
+                    <><LogOut className="h-4 w-4 mr-2" />Sign out of all other devices</>
+                  )}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

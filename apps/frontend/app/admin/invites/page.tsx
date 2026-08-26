@@ -40,6 +40,7 @@ export default function AdminInvites() {
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState('');
   const [copied, setCopied] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const fetchInvites = async (forPlatformId: string) => {
     try {
@@ -85,6 +86,23 @@ export default function AdminInvites() {
       setError((err as Error).message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const revokeInvite = async (invite: Invite) => {
+    setRevokingId(invite.id);
+    setError('');
+    try {
+      const res = await apiFetch(`/api/admin/invites/${invite.id}?platformId=${currentPlatformId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to revoke invitation');
+      fetchInvites(currentPlatformId);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -138,7 +156,8 @@ export default function AdminInvites() {
                 <TableHead className="text-zinc-400">Platform</TableHead>
                 <TableHead className="text-zinc-400">Role</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
-                <TableHead className="text-right text-zinc-400">Expires</TableHead>
+                <TableHead className="text-zinc-400">Expires</TableHead>
+                <TableHead className="text-right text-zinc-400">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -166,14 +185,29 @@ export default function AdminInvites() {
                       <Badge className="bg-emerald-500/20 text-emerald-400 border-0">Pending</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-zinc-400">
+                  <TableCell className="text-zinc-400">
                     {new Date(invite.expiresAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {invite.isUsed ? (
+                      <span className="text-xs text-zinc-600">—</span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => revokeInvite(invite)}
+                        disabled={revokingId === invite.id}
+                        className="h-7 text-zinc-500 hover:text-red-400"
+                      >
+                        {revokingId === invite.id ? 'Revoking...' : 'Revoke'}
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
               {invites.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
+                  <TableCell colSpan={6} className="h-24 text-center text-zinc-500">
                     No invitations found.
                   </TableCell>
                 </TableRow>

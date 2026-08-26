@@ -72,6 +72,147 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
+// Refuses to strip the last ADMIN from a platform, which would leave it unmanageable — the
+// same invariant deleteAccount enforces before letting a sole admin delete themselves.
+async function wouldOrphanPlatform(platformId: string, userId: string): Promise<boolean> {
+  const access = await prisma.userPlatformAccess.findUnique({
+    where: { userId_platformId: { userId, platformId } },
+  });
+  if (access?.role !== 'ADMIN') return false;
+
+  const adminCount = await prisma.userPlatformAccess.count({
+    where: { platformId, role: 'ADMIN' },
+  });
+  return adminCount <= 1;
+}
+
+export const updateUserRole = async (req: Request, res: Response) => {
+  try {
+    const platformId = (req as any).adminPlatformId;
+    const actorId = (req as any).user?.id;
+    const userId = String(req.params.userId);
+    const { role } = req.body;
+
+    if (!['USER', 'ADMIN'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be USER or ADMIN' });
+    }
+
+    const access = await prisma.userPlatformAccess.findUnique({
+      where: { userId_platformId: { userId, platformId } },
+      include: { user: { select: { email: true } } },
+    });
+
+    if (!access) {
+      return res.status(404).json({ message: 'User is not a member of this platform' });
+    }
+
+    if (access.role === role) {
+      return res.status(200).json({ message: 'Role unchanged', role });
+    }
+
+    if (role === 'USER' && await wouldOrphanPlatform(platformId, userId)) {
+      return res.status(409).json({
+        message: 'This is the only admin for this platform. Promote another admin first.',
+      });
+    }
+
+    await prisma.userPlatformAccess.update({
+      where: { userId_platformId: { userId, platformId } },
+      data: { role },
+    });
+
+    logActivity({
+      action: 'USER_ROLE_CHANGED',
+      platformId,
+      actorId,
+      targetType: 'user',
+      targetId: userId,
+      metadata: { email: access.user.email, from: access.role, to: role },
+    });
+
+    res.json({ message: 'Role updated', role });
+  } catch (error) {
+    console.error('updateUserRole error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const removeUserFromPlatform = async (req: Request, res: Response) => {
+  try {
+    const platformId = (req as any).adminPlatformId;
+    const actorId = (req as any).user?.id;
+    const userId = String(req.params.userId);
+
+    const access = await prisma.userPlatformAccess.findUnique({
+      where: { userId_platformId: { userId, platformId } },
+      include: { user: { select: { email: true } } },
+    });
+
+    if (!access) {
+      return res.status(404).json({ message: 'User is not a member of this platform' });
+    }
+
+    if (await wouldOrphanPlatform(platformId, userId)) {
+      return res.status(409).json({
+        message: 'This is the only admin for this platform. Promote another admin first.',
+      });
+    }
+
+    // Only this platform's membership is removed. The account itself and any access it has to
+    // other platforms are left alone, so sessions stay valid — the next request simply finds
+    // no access record for this platform.
+    await prisma.userPlatformAccess.delete({
+      where: { userId_platformId: { userId, platformId } },
+    });
+
+    logActivity({
+      action: 'USER_REMOVED_FROM_PLATFORM',
+      platformId,
+      actorId,
+      targetType: 'user',
+      targetId: userId,
+      metadata: { email: access.user.email, role: access.role },
+    });
+
+    res.json({ message: 'User removed from platform' });
+  } catch (error) {
+    console.error('removeUserFromPlatform error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const revokeInvite = async (req: Request, res: Response) => {
+  try {
+    const platformId = (req as any).adminPlatformId;
+    const actorId = (req as any).user?.id;
+    const id = String(req.params.id);
+
+    const invite = await prisma.invitation.findUnique({ where: { id } });
+
+    // Scoped to the caller's platform so an admin of one platform can't revoke another's
+    // invitations by guessing an id.
+    if (!invite || invite.platformId !== platformId) {
+      return res.status(404).json({ message: 'Invitation not found' });
+    }
+
+    await prisma.invitation.delete({ where: { id } });
+
+    logActivity({
+      action: 'INVITE_REVOKED',
+      platformId,
+      actorId,
+      targetType: 'invitation',
+      targetId: id,
+      metadata: { email: invite.email, role: invite.role },
+    });
+
+    res.json({ message: 'Invitation revoked' });
+  } catch (error) {
+    console.error('revokeInvite error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const getInvites = async (req: Request, res: Response) => {
   try {
     const platformId = (req as any).adminPlatformId;
