@@ -140,6 +140,13 @@ jobs:
             NODE_ENV=production
             ALLOWED_ORIGINS=https://auth.vyntrise.com
             EMAIL_PROVIDER=${{ secrets.EMAIL_PROVIDER }}
+            EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+            EMAIL_FROM_NAME=${{ secrets.EMAIL_FROM_NAME }}
+            SMTP_HOST=${{ secrets.SMTP_HOST }}
+            SMTP_PORT=${{ secrets.SMTP_PORT }}
+            SMTP_SECURE=${{ secrets.SMTP_SECURE }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
             GMAIL_USER=${{ secrets.GMAIL_USER }}
             GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}

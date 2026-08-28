@@ -7,12 +7,14 @@ import inviteRoutes from './routes/invite.routes';
 import adminRoutes from './routes/admin.routes';
 import passwordResetRoutes from './routes/password-reset.routes';
 import accountRoutes from './routes/account.routes';
-import { emailService } from './services/email.service';
+import { emailProvider } from './services/email.service';
 import { authenticateJWT } from './middlewares/auth.middleware';
 import { assertRequiredEnv } from './config/env';
+import { reportEmailConfig } from './config/email';
 
 dotenv.config();
 assertRequiredEnv();
+reportEmailConfig();
 
 const app = express();
 const PORT = process.env.PORT || 3021;
@@ -85,5 +87,5 @@ app.use('/api/account', authenticateJWT, accountRoutes);
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`Email provider: ${process.env.EMAIL_PROVIDER ?? 'console'} (${emailService.constructor.name})`);
+  console.log(`Email transport: ${emailProvider.name}`);
 });

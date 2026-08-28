@@ -1,33 +1,21 @@
 import nodemailer from 'nodemailer';
+import { GmailSettings } from '../../config/email';
 import { NodemailerEmailProvider } from './base.provider';
 
 export class GmailProvider extends NodemailerEmailProvider {
+  readonly name = 'GmailProvider';
   protected transporter: nodemailer.Transporter;
-  protected fromAddress: string;
-  protected logPrefix = '[GmailProvider]';
 
-  constructor() {
+  constructor(settings: GmailSettings) {
     super();
-    console.log('[GmailProvider] Initializing Gmail email provider');
-    console.log('[GmailProvider] Gmail User:', process.env.GMAIL_USER);
+    console.log(`[GmailProvider] user=${settings.user}`);
 
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD, // Gmail App Password (not your account password)
-      },
+      // Gmail rejects the account password here; this must be a 16-character App Password.
+      auth: { user: settings.user, pass: settings.appPassword },
     });
 
-    this.fromAddress = process.env.GMAIL_USER || '';
-
-    // Verify connection on initialization
-    this.transporter.verify((error) => {
-      if (error) {
-        console.error('[GmailProvider] ❌ Connection failed:', error.message);
-      } else {
-        console.log('[GmailProvider] ✅ Gmail connection verified and ready to send emails');
-      }
-    });
+    this.verify();
   }
 }

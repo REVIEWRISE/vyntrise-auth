@@ -1,6 +1,38 @@
 # Email Configuration Guide
 
-The Vyntrise auth service supports multiple email providers for sending transactional emails (password resets, invitations, etc.).
+The Vyntrise auth service supports multiple email providers for sending transactional emails (password resets, invitations, security notifications).
+
+## Sender Configuration
+
+These apply to every provider:
+
+```env
+EMAIL_FROM=noreply@vyntrise.com
+EMAIL_FROM_NAME=Vyntrise
+FRONTEND_URL=https://auth.vyntrise.com
+```
+
+- **EMAIL_FROM**: the address mail is sent from. Defaults to `SMTP_USER`/`GMAIL_USER`, but **only when that value is itself an email address** — providers like SendGrid authenticate as the literal username `apikey`, so with those you must set `EMAIL_FROM` explicitly.
+- **EMAIL_FROM_NAME**: display name in the From header. Defaults to `Vyntrise`.
+- **FRONTEND_URL**: base URL for every link in an email. If unset, reset and invitation links point at `localhost` and are useless in production.
+
+## Misconfiguration Behaviour
+
+If the selected provider is missing credentials, the service **logs an error and falls back to the console provider** rather than refusing to start — a broken mailer should not take sign-in down with it. This means a misconfigured deploy looks healthy while silently sending nothing, so **check the boot log** after any change:
+
+```
+[email] provider=smtp from="Vyntrise <noreply@vyntrise.com>" links=https://auth.vyntrise.com
+[SmtpProvider] ✅ Connection verified, ready to send
+```
+
+A fallback looks like this instead:
+
+```
+[email] ⚠️  EMAIL_PROVIDER=smtp but SMTP_PASSWORD is not set.
+[email] ⚠️  Falling back to the console provider — no mail will actually be sent.
+```
+
+Running in production on the console provider logs its own explicit warning.
 
 ## Available Providers
 
@@ -34,10 +66,10 @@ SMTP_FROM=noreply@vyntrise.com
 
 - **SMTP_HOST**: Your SMTP server hostname
 - **SMTP_PORT**: Usually `587` (TLS) or `465` (SSL)
-- **SMTP_SECURE**: Set to `true` for port 465, `false` for other ports
+- **SMTP_SECURE**: Optional. Defaults to `true` for port 465 and `false` otherwise; set it only to override that
 - **SMTP_USER**: SMTP authentication username (usually your email)
 - **SMTP_PASSWORD**: SMTP authentication password or API key
-- **SMTP_FROM**: (Optional) The "from" address for emails. Defaults to SMTP_USER
+- **SMTP_FROM**: (Optional) Legacy alias for `EMAIL_FROM`; prefer `EMAIL_FROM`
 
 #### Common SMTP Providers:
 
@@ -105,25 +137,43 @@ GMAIL_APP_PASSWORD=your-16-char-app-password
 
 ---
 
-## Email Templates
+## Emails Sent
 
-The service sends three types of emails:
+Every message is rendered from `src/services/email-templates/` and sent as HTML with a plain-text alternative (HTML-only mail is scored as spam by most filters).
 
-1. **Password Reset Email**: Contains a secure link to reset password (expires in 1 hour)
-2. **Email Change Notification**: Confirms email address changes
-3. **Invitation Email**: Registration link for new users (expires in 7 days)
+| Email | Trigger | Recipient |
+|---|---|---|
+| Password reset | `POST /api/auth/forgot-password` | The account address (expires in 1 hour) |
+| Invitation | Admin creates an invite | The invited address (expires in 7 days) |
+| Welcome | Self-registration on a platform | The new account |
+| Email address changed | `PATCH /api/account/email` | **Both** the old and new addresses |
+| Password changed | `PATCH /api/account/password` | The account address |
+| Signed out everywhere | `DELETE /api/account/sessions` | The account address |
+| Role changed | Admin changes a member's role | The affected member |
+| Access removed | Admin removes a member | The affected member |
 
-All emails use a clean, responsive HTML template.
+The last five are security notifications: they exist so a user finds out when someone else changes their account. They are sent **fire-and-forget** via `notify()` — a bounced notification never turns a successful action into a 500. Password resets are the exception and are awaited, because delivery is the entire point of that request.
+
+### Adding a new email
+
+1. Add a template function to `src/services/email-templates/index.ts` returning `render({ subject, title, preheader, paragraphs, action?, footnote? })`.
+2. Add a method to `emailService` in `src/services/email.service.ts`.
+3. Call it from the controller with `notify('label', () => emailService.sendX(...))`.
+
+All interpolated values are HTML-escaped by the renderer. Wrap a phrase in `*asterisks*` for bold; it degrades to plain text in the text alternative.
 
 ---
 
 ## Testing Email Configuration
 
-After configuring your provider, test it by:
+After configuring your provider:
 
-1. Triggering a password reset from the login page
-2. Creating an invitation from the admin panel
-3. Checking the console logs (for `console` provider) or your inbox
+1. **Check the boot log** for the `[email] provider=...` line and the `✅ Connection verified` line. This catches credential problems before any user hits them.
+2. Trigger a password reset from the login page.
+3. Create an invitation from the admin panel.
+4. Check your inbox — or, with the `console` provider, the server logs, which print the full message body including the link.
+
+Note that the real providers deliberately log only the subject and recipient. Bodies carry single-use reset and invitation tokens, so logging them would put working credentials into the log pipeline. Only the `console` provider prints bodies, and it never actually sends.
 
 ---
 
@@ -133,7 +183,7 @@ After configuring your provider, test it by:
 2. **Configure SPF, DKIM, and DMARC** records for your domain
 3. **Use environment variables** or a secret manager for credentials
 4. **Monitor email delivery** and bounce rates
-5. **Set up email templates** in your provider's dashboard for better tracking
+5. **Set the deployment secrets**: `EMAIL_PROVIDER`, `EMAIL_FROM`, `FRONTEND_URL`, and either the `SMTP_*` or `GMAIL_*` group. These are read from GitHub Actions secrets in `.github/workflows/ci.yml` and passed to the container by `docker-compose.yml`; a variable missing from either file never reaches the app.
 
 ---
 

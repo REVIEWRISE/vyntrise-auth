@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import prisma from '../db/prisma';
 import { logActivity } from '../services/audit.service';
 import { BCRYPT_ROUNDS } from '../config/env';
+import { emailService, notify } from '../services/email.service';
 
 // A hash of an unguessable value, compared against when no user is found so the "no such
 // account" path costs the same as a wrong password — otherwise the timing difference alone
@@ -151,6 +152,10 @@ export const register = async (req: Request, res: Response) => {
       targetId: user.id,
       metadata: { email },
     });
+
+    notify(`welcome to ${email}`, () =>
+      emailService.sendWelcomeEmail(email, platform.name, platform.id)
+    );
 
     res.status(201).json({ message: 'Account created successfully' });
   } catch (error) {

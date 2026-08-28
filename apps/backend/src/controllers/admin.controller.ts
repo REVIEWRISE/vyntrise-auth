@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma';
 import crypto from 'crypto';
-import { emailService } from '../services/email.service';
+import { emailService, notify } from '../services/email.service';
+import { emailConfig } from '../config/email';
 import { logActivity } from '../services/audit.service';
 import { hashToken } from '../utils/token';
 
@@ -99,7 +100,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
 
     const access = await prisma.userPlatformAccess.findUnique({
       where: { userId_platformId: { userId, platformId } },
-      include: { user: { select: { email: true } } },
+      include: { user: { select: { email: true } }, platform: { select: { name: true } } },
     });
 
     if (!access) {
@@ -130,6 +131,10 @@ export const updateUserRole = async (req: Request, res: Response) => {
       metadata: { email: access.user.email, from: access.role, to: role },
     });
 
+    notify(`role change to ${access.user.email}`, () =>
+      emailService.sendRoleChangedEmail(access.user.email, access.platform.name, role)
+    );
+
     res.json({ message: 'Role updated', role });
   } catch (error) {
     console.error('updateUserRole error:', error);
@@ -145,7 +150,7 @@ export const removeUserFromPlatform = async (req: Request, res: Response) => {
 
     const access = await prisma.userPlatformAccess.findUnique({
       where: { userId_platformId: { userId, platformId } },
-      include: { user: { select: { email: true } } },
+      include: { user: { select: { email: true } }, platform: { select: { name: true } } },
     });
 
     if (!access) {
@@ -173,6 +178,10 @@ export const removeUserFromPlatform = async (req: Request, res: Response) => {
       targetId: userId,
       metadata: { email: access.user.email, role: access.role },
     });
+
+    notify(`removal notice to ${access.user.email}`, () =>
+      emailService.sendRemovedFromPlatformEmail(access.user.email, access.platform.name)
+    );
 
     res.json({ message: 'User removed from platform' });
   } catch (error) {
@@ -273,9 +282,10 @@ export const createInvite = async (req: Request, res: Response) => {
       where: { email_platformId: { email, platformId } },
       update: { token: storedToken, expiresAt, isUsed: false, role },
       create: { email, platformId, token: storedToken, expiresAt, role },
+      include: { platform: { select: { name: true } } },
     });
 
-    const registerLink = `${process.env.FRONTEND_URL}/register?token=${token}`;
+    const registerLink = `${emailConfig.appUrl}/register?token=${token}`;
 
     logActivity({
       action: 'INVITE_CREATED',
@@ -286,21 +296,9 @@ export const createInvite = async (req: Request, res: Response) => {
       metadata: { email, role },
     });
 
-    console.log('[createInvite] 📧 Sending invitation email');
-    console.log('[createInvite] To:', email);
-    console.log('[createInvite] Register Link:', registerLink);
-    console.log('[createInvite] Platform ID:', platformId);
-    console.log('[createInvite] Role:', role);
-
-    // Send invite email non-blocking
-    emailService.sendInviteEmail(email, registerLink)
-      .then(() => {
-        console.log('[createInvite] ✅ Invitation email sent successfully to:', email);
-      })
-      .catch((err: Error) => {
-        console.error('[createInvite] ❌ Failed to send invite email to:', email);
-        console.error('[createInvite] Error:', err);
-      });
+    notify(`invitation to ${email}`, () =>
+      emailService.sendInviteEmail(email, registerLink, invitation.platform.name, role)
+    );
 
     res.status(201).json({
       message: 'Invitation created',

@@ -1,39 +1,24 @@
 import nodemailer from 'nodemailer';
+import { SmtpSettings } from '../../config/email';
 import { NodemailerEmailProvider } from './base.provider';
 
 export class SmtpProvider extends NodemailerEmailProvider {
+  readonly name = 'SmtpProvider';
   protected transporter: nodemailer.Transporter;
-  protected fromAddress: string;
-  protected logPrefix = '[SmtpProvider]';
 
-  constructor() {
+  constructor(settings: SmtpSettings) {
     super();
-    console.log('[SmtpProvider] Initializing SMTP email provider');
-    console.log('[SmtpProvider] Host:', process.env.SMTP_HOST);
-    console.log('[SmtpProvider] Port:', process.env.SMTP_PORT || '587');
-    console.log('[SmtpProvider] User:', process.env.SMTP_USER);
+    console.log(
+      `[SmtpProvider] host=${settings.host}:${settings.port} secure=${settings.secure} user=${settings.user}`
+    );
 
-    // General SMTP configuration
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
+      host: settings.host,
+      port: settings.port,
+      secure: settings.secure,
+      auth: { user: settings.user, pass: settings.password },
     });
 
-    this.fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@vyntrise.com';
-    console.log('[SmtpProvider] From Address:', this.fromAddress);
-
-    // Verify connection on initialization
-    this.transporter.verify((error) => {
-      if (error) {
-        console.error('[SmtpProvider] ❌ Connection failed:', error.message);
-      } else {
-        console.log('[SmtpProvider] ✅ SMTP connection verified and ready to send emails');
-      }
-    });
+    this.verify();
   }
 }

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
-import { emailService } from '../services/email.service';
+import { emailService, notify } from '../services/email.service';
 import { logActivity } from '../services/audit.service';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { BCRYPT_ROUNDS } from '../config/env';
@@ -74,19 +74,9 @@ export const changeEmail = async (req: AuthRequest, res: Response) => {
       data: { email: newEmail },
     });
 
-    console.log('[changeEmail] 📧 Sending email change notifications');
-    console.log('[changeEmail] Old Email:', oldEmail);
-    console.log('[changeEmail] New Email:', newEmail);
-
-    // Non-blocking notification
-    emailService.sendEmailChangeNotification(oldEmail, newEmail)
-      .then(() => {
-        console.log('[changeEmail] ✅ Email change notifications sent successfully');
-      })
-      .catch((err: Error) => {
-        console.error('[changeEmail] ❌ Failed to send email change notification');
-        console.error('[changeEmail] Error:', err);
-      });
+    notify(`email-change notice for ${oldEmail}`, () =>
+      emailService.sendEmailChangeNotification(oldEmail, newEmail)
+    );
 
     return res.json({ id: updated.id, email: updated.email, createdAt: updated.createdAt });
   } catch (error) {
@@ -130,15 +120,22 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
     // Delete sessions except the current one (its id is embedded in the access token,
     // so this works the same whether the caller is cookie-based or Bearer-only).
     const currentSessionId = req.user!.sessionId;
+    let signedOut: number;
     if (currentSessionId) {
-      await prisma.session.deleteMany({
+      ({ count: signedOut } = await prisma.session.deleteMany({
         where: { userId: req.user!.id, id: { not: currentSessionId } },
-      });
+      }));
     } else {
       // Legacy fallback: token predates sessionId (only possible for up to 15 minutes
       // after this deploy) — safest default is to sign the user out everywhere.
-      await prisma.session.deleteMany({ where: { userId: req.user!.id } });
+      ({ count: signedOut } = await prisma.session.deleteMany({ where: { userId: req.user!.id } }));
     }
+
+    // The one alert that matters most: it is how a user finds out their account was taken
+    // over, so it goes to the address on file even though the change succeeded.
+    notify(`password-changed notice for ${user.email}`, () =>
+      emailService.sendPasswordChangedEmail(user.email, signedOut)
+    );
 
     return res.json({ message: 'Password updated successfully' });
   } catch (error) {
@@ -192,6 +189,16 @@ export const revokeOtherSessions = async (req: AuthRequest, res: Response) => {
       targetType: 'session',
       metadata: { scope: 'all_other_devices', count },
     });
+
+    if (count > 0) {
+      notify('sessions-revoked notice', async () => {
+        const user = await prisma.user.findUnique({
+          where: { id: req.user!.id },
+          select: { email: true },
+        });
+        if (user) await emailService.sendSessionsRevokedEmail(user.email, count);
+      });
+    }
 
     return res.json({ message: `Signed out of ${count} other ${count === 1 ? 'device' : 'devices'}`, count });
   } catch (error) {

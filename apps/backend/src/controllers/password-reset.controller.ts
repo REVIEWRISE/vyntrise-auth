@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
 import { emailService } from '../services/email.service';
+import { emailConfig } from '../config/email';
 import { hashToken } from '../utils/token';
 import { BCRYPT_ROUNDS } from '../config/env';
 
@@ -38,7 +39,7 @@ export async function forgotPassword(req: Request, res: Response): Promise<void>
       create: { userId: user.id, token: hashToken(token), expiresAt, isUsed: false },
     });
 
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+    const resetLink = `${emailConfig.appUrl}/reset-password?token=${token}`;
 
     try {
       await emailService.sendPasswordResetEmail(email, resetLink);
