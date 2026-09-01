@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BookOpen, ChevronRight, Terminal, Globe, Key, RefreshCw, Shield, Users, Zap } from 'lucide-react';
+import { BookOpen, ChevronRight, Terminal, Globe, Key, KeyRound, MailCheck, RefreshCw, Shield, Users, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CopyButton } from '@/components/copy-button';
@@ -71,6 +71,8 @@ const NAV_ITEMS = [
   { id: 'callback', label: '4. Handle Callback', icon: ChevronRight },
   { id: 'token', label: '5. Use Token', icon: Key },
   { id: 'refresh', label: '6. Token Refresh', icon: RefreshCw },
+  { id: 'verify', label: 'Verify Tokens Locally', icon: KeyRound },
+  { id: 'confirm', label: 'Email Confirmation', icon: MailCheck },
   { id: 'security', label: 'Security Notes', icon: Shield },
 ];
 
@@ -419,6 +421,111 @@ async function refreshToken(): Promise<boolean> {
         </Section>
 
         {/* Security */}
+        {/* Local verification */}
+        <Section id="verify" icon={KeyRound} title="Verify Tokens Locally">
+          <p>
+            Tokens are signed with <strong className="text-zinc-200">RS256</strong>, an asymmetric
+            algorithm. We keep the private key; the public half is published. Your app can therefore
+            check a token entirely on its own — no network round trip on every request, and{' '}
+            <strong className="text-zinc-200">no shared secret to leak</strong>.
+          </p>
+
+          <div className="p-3 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
+            Never ask us for <InlineCode>JWT_SECRET</InlineCode>. Anything holding it could mint
+            tokens for any user on any platform, not just verify them. If you were given it for an
+            earlier integration, switch to the public key below and discard it.
+          </div>
+
+          <p className="text-sm">Two endpoints, both public and cacheable:</p>
+          <CodeBlock language="http" code={`GET https://auth.vyntrise.com/.well-known/openid-configuration
+GET https://auth.vyntrise.com/.well-known/jwks.json`} />
+
+          <p className="text-sm">
+            Most libraries only need the first URL — they discover the rest. With{' '}
+            <InlineCode>jose</InlineCode>:
+          </p>
+          <CodeBlock language="typescript" code={`import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+// Fetches and caches our public keys, and refetches automatically on rotation.
+const JWKS = createRemoteJWKSet(
+  new URL('https://auth.vyntrise.com/.well-known/jwks.json')
+);
+
+export async function verifyAccessToken(token: string) {
+  const { payload } = await jwtVerify(token, JWKS, {
+    issuer: 'https://auth.vyntrise.com',
+  });
+
+  // Refresh tokens are signed by the same key, so check what you were handed.
+  if (payload.typ !== 'access') throw new Error('Not an access token');
+
+  return { userId: payload.sub as string, email: payload.email as string };
+}`} />
+
+          <p className="text-sm">Claims you can rely on:</p>
+          <CodeBlock language="json" code={`{
+  "sub": "34d9497c-cbcf-489b-8b8c-7f7400e85005",
+  "id": "34d9497c-cbcf-489b-8b8c-7f7400e85005",
+  "email": "user@example.com",
+  "sessionId": "b1f2...",
+  "typ": "access",
+  "iss": "https://auth.vyntrise.com",
+  "exp": 1788000000
+}`} />
+
+          <p className="text-sm">
+            <InlineCode>sub</InlineCode> and <InlineCode>id</InlineCode> are the same value —{' '}
+            <InlineCode>sub</InlineCode> is the standard claim, <InlineCode>id</InlineCode> is kept
+            so existing integrations keep working. Prefer <InlineCode>sub</InlineCode> in new code.
+          </p>
+
+          <div className="p-3 rounded-md bg-zinc-800/50 border border-zinc-700 text-sm text-zinc-400">
+            Local verification proves a token was issued by us and has not expired. It cannot tell
+            you the session was since revoked. For anything destructive, call{' '}
+            <InlineCode>/api/account/me</InlineCode> — that check hits the session table.
+          </div>
+        </Section>
+
+        {/* Email confirmation */}
+        <Section id="confirm" icon={MailCheck} title="Email Confirmation">
+          <p>
+            Accounts created through self-registration start unconfirmed and{' '}
+            <strong className="text-zinc-200">cannot sign in</strong> until the address is proven.
+            Without that step anyone could register under someone else&apos;s address and occupy it
+            permanently, since an email may only exist once.
+          </p>
+
+          <p className="text-sm">
+            Invited users skip this — receiving the invitation already proves they read that mailbox.
+          </p>
+
+          <p className="text-sm">
+            A sign-in attempt on an unconfirmed account returns{' '}
+            <InlineCode>403</InlineCode> with a code your UI can branch on:
+          </p>
+          <CodeBlock language="json" code={`{
+  "message": "Confirm your email address before signing in — check your inbox for the link.",
+  "code": "EMAIL_NOT_VERIFIED"
+}`} />
+
+          <p className="text-sm">The endpoints behind the flow:</p>
+          <CodeBlock language="http" code={`GET  /api/auth/verify-email/:token     → { valid: true, email }
+POST /api/auth/verify-email            { token }
+POST /api/auth/resend-verification     { email }`} />
+
+          <p className="text-sm">
+            Links expire after <strong className="text-zinc-200">24 hours</strong>, and requesting a
+            new one invalidates the previous link. Reopening an already-used link on a confirmed
+            account returns success rather than an error, so a double click or a mail scanner
+            following the link first does not strand the user.
+          </p>
+
+          <div className="p-3 rounded-md bg-zinc-800/50 border border-zinc-700 text-sm text-zinc-400">
+            Changing an account&apos;s email also clears its confirmed state and sends a fresh link
+            to the new address — the same reasoning applies from the other direction.
+          </div>
+        </Section>
+
         <Section id="security" icon={Shield} title="Security Notes">
           <div className="space-y-3">
             {[

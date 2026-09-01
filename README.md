@@ -74,9 +74,17 @@ Backend runs on `http://localhost:3021`, frontend on `http://localhost:3001`.
 # Database
 DATABASE_URL="postgresql://user:pass@localhost:5432/vyntrise_auth"
 
-# JWT
+# JWT — used to verify tokens issued before RS256 signing was introduced. Still required;
+# retirable once every pre-switch refresh token has expired (7 days).
 JWT_SECRET=your-jwt-secret
 JWT_REFRESH_SECRET=your-refresh-secret
+
+# Token signing. An RS256 key pair is generated on first boot and stored in the SigningKey
+# table; consumers verify against /.well-known/jwks.json, so no secret is ever shared.
+# OIDC_ISSUER must match the public URL browsers actually reach.
+OIDC_ISSUER=http://localhost:3020
+# Encrypts the private key at rest. Generate with: openssl rand -base64 32
+# SIGNING_KEY_SECRET=
 
 # Server
 PORT=3021

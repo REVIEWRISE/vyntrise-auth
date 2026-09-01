@@ -312,8 +312,8 @@ NEXT_PUBLIC_AUTH_URL=https://auth.vyntrise.com
 # Your Platform ID (get this from auth.vyntrise.com/admin/platforms)
 NEXT_PUBLIC_PLATFORM_ID=your-platform-uuid-here
 
-# JWT Secret (must match the auth service)
-JWT_SECRET=same-secret-as-auth-service
+# No shared secret needed. Tokens are RS256-signed and verified against the published keys at
+# https://auth.vyntrise.com/.well-known/jwks.json
 ```
 
 ---
@@ -325,8 +325,13 @@ JWT_SECRET=same-secret-as-auth-service
 ```javascript
 // middleware/authMiddleware.js
 
-const jwt = require('jsonwebtoken');
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 const fetch = require('node-fetch');
+
+// Caches the public keys and refetches them automatically when they rotate.
+const JWKS = createRemoteJWKSet(
+  new URL('https://auth.vyntrise.com/.well-known/jwks.json')
+);
 
 async function validateSession(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -336,8 +341,12 @@ async function validateSession(req, res, next) {
   }
 
   try {
-    // Verify JWT signature locally (fast)
-    jwt.verify(token, process.env.JWT_SECRET);
+    // Verify the signature locally (fast) against the auth service's public keys.
+    // Requires: npm install jose
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: 'https://auth.vyntrise.com',
+    });
+    if (payload.typ !== 'access') throw new Error('Not an access token');
 
     // Periodically validate with auth service (optional - for better performance)
     // You can cache validation results for a few minutes
@@ -381,8 +390,12 @@ module.exports = { validateSession };
 
 import requests
 import jwt
+from jwt import PyJWKClient
 from django.http import JsonResponse
 from django.conf import settings
+
+# Caches the auth service's public keys and refetches them when they rotate.
+jwks_client = PyJWKClient('https://auth.vyntrise.com/.well-known/jwks.json')
 
 class SessionValidationMiddleware:
     def __init__(self, get_response):
@@ -396,9 +409,18 @@ class SessionValidationMiddleware:
             if not token:
                 return JsonResponse({'message': 'Unauthorized'}, status=401)
             
-            # Verify JWT locally
+            # Verify locally against the auth service's published public keys.
+            # Requires: pip install "pyjwt[crypto]"
             try:
-                jwt.decode(token, settings.JWT_SECRET, algorithms=['HS256'])
+                signing_key = jwks_client.get_signing_key_from_jwt(token)
+                claims = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=['RS256'],
+                    issuer='https://auth.vyntrise.com',
+                )
+                if claims.get('typ') != 'access':
+                    raise jwt.InvalidTokenError('Not an access token')
             except jwt.InvalidTokenError:
                 return JsonResponse({'message': 'Invalid token'}, status=401)
             
@@ -578,7 +600,7 @@ To implement session revocation in your platform:
 2. ✅ Handle 401 errors with "revoked" messages
 3. ✅ Clear tokens and redirect to re-authenticate
 4. ✅ Show user-friendly messages
-5. ✅ Configure environment variables (AUTH_URL, PLATFORM_ID, JWT_SECRET)
+5. ✅ Configure environment variables (AUTH_URL, PLATFORM_ID) — no shared signing secret is needed
 6. ✅ Test the flow thoroughly
 
 This ensures users are immediately logged out across all platforms when their session is revoked from auth.vyntrise.com.

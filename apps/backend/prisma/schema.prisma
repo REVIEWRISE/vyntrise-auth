@@ -8,25 +8,28 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  emailVerified   Boolean   @default(false)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  platforms          UserPlatformAccess[]
-  passwordResetToken PasswordResetToken?
-  sessions           Session[]
-  auditLogs          AuditLog[]
+  platforms               UserPlatformAccess[]
+  passwordResetToken      PasswordResetToken?
+  emailVerificationTokens EmailVerificationToken[]
+  sessions                Session[]
+  auditLogs               AuditLog[]
 }
 
 model Platform {
-  id                     String   @id @default(uuid())
-  name                   String   @unique
-  description            String?
-  allowSelfRegistration  Boolean  @default(false)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  name                  String   @unique
+  description           String?
+  allowSelfRegistration Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   users       UserPlatformAccess[]
   invitations Invitation[]
@@ -97,4 +100,35 @@ model AuditLog {
   actor    User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([platformId, createdAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  // The address the token was issued for. Stored alongside the user because a pending change
+  // of email must not mark the *new* address verified if the user reverts before clicking.
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SigningKey {
+  id            String    @id @default(uuid())
+  // Published in the JWT header so a verifier knows which public key to check against, which
+  // is what makes rotation possible without invalidating tokens signed by the previous key.
+  kid           String    @unique
+  algorithm     String    @default("RS256")
+  publicJwk     Json
+  privateKeyPem String
+  isActive      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  retiredAt     DateTime?
+
+  @@index([isActive])
 }

@@ -150,6 +150,8 @@ jobs:
             GMAIL_USER=${{ secrets.GMAIL_USER }}
             GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            OIDC_ISSUER=${{ secrets.OIDC_ISSUER }}
+            SIGNING_KEY_SECRET=${{ secrets.SIGNING_KEY_SECRET }}
             EOF
 
             # Log in to GHCR

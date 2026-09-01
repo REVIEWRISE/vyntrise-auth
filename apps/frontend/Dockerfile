@@ -14,6 +14,11 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Baked into the /.well-known rewrites at build time. Matches the compose service name, which is
+# how the frontend container reaches the backend on the shared network.
+ARG BACKEND_INTERNAL_URL=http://backend:3021
+ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
+
 RUN npm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────

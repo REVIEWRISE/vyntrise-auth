@@ -2,6 +2,7 @@ import { Response } from 'express';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
 import { emailService, notify } from '../services/email.service';
+import { sendVerificationEmail } from './email-verification.controller';
 import { logActivity } from '../services/audit.service';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { BCRYPT_ROUNDS } from '../config/env';
@@ -69,16 +70,33 @@ export const changeEmail = async (req: AuthRequest, res: Response) => {
     }
 
     const oldEmail = user.email;
+
+    // The new address is unproven, so it starts unverified and the next sign-in is gated on
+    // confirming it. Skipping this would reopen the registration hole from the other side:
+    // any signed-in user could move their account onto an address they do not control and
+    // occupy it, since User.email is unique.
     const updated = await prisma.user.update({
       where: { id: req.user!.id },
-      data: { email: newEmail },
+      data: { email: newEmail, emailVerified: false, emailVerifiedAt: null },
+      include: { platforms: { include: { platform: { select: { name: true } } } } },
     });
 
     notify(`email-change notice for ${oldEmail}`, () =>
       emailService.sendEmailChangeNotification(oldEmail, newEmail)
     );
 
-    return res.json({ id: updated.id, email: updated.email, createdAt: updated.createdAt });
+    await sendVerificationEmail(
+      { id: updated.id, email: newEmail },
+      updated.platforms[0]?.platform.name ?? 'Vyntrise'
+    );
+
+    return res.json({
+      id: updated.id,
+      email: updated.email,
+      createdAt: updated.createdAt,
+      emailVerified: false,
+      message: 'Address updated. Confirm the new address to keep signing in.',
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Internal server error' });

@@ -10,7 +10,7 @@ Before testing, ensure you have:
 
 - [ ] Created a platform in auth.vyntrise.com/admin/platforms
 - [ ] Copied your Platform ID from the platforms page
-- [ ] Set `JWT_SECRET` to match auth service (get from auth admin)
+- [ ] Verified tokens against `https://auth.vyntrise.com/.well-known/jwks.json` (no shared secret — do not request `JWT_SECRET`)
 - [ ] Configured `NEXT_PUBLIC_AUTH_URL` (or equivalent)
 - [ ] Implemented the auth API client from examples/nextjs-integration/lib/authApi.ts
 
@@ -229,7 +229,7 @@ Review your implementation against these requirements:
 
 - [ ] `NEXT_PUBLIC_AUTH_URL` or equivalent is set
 - [ ] `NEXT_PUBLIC_PLATFORM_ID` is set
-- [ ] `JWT_SECRET` matches auth service
+- [ ] Token signature verifies against the published JWKS, and `iss` is `https://auth.vyntrise.com`
 - [ ] All URLs use HTTPS in production
 
 ### Callback Handler

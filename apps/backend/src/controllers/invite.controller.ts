@@ -39,7 +39,12 @@ export const registerViaInvite = async (req: Request, res: Response) => {
       user = await prisma.user.create({
         data: {
           email: invitation.email,
-          password: hashedPassword
+          password: hashedPassword,
+          // No separate confirmation step here: the invitation token was delivered to this
+          // address and could only be redeemed by someone who read it, which is exactly what
+          // the verification email proves for self-registration.
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
         }
       });
     } else {

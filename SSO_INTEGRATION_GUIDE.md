@@ -141,14 +141,48 @@ The access token payload contains:
 
 ```json
 {
+  "sub": "<user-uuid>",
   "id": "<user-uuid>",
   "email": "user@example.com",
+  "sessionId": "<session-uuid>",
+  "typ": "access",
+  "iss": "https://auth.vyntrise.com",
   "iat": 1234567890,
   "exp": 1234568790
 }
 ```
 
-Verify tokens using the shared `JWT_SECRET`. Contact the Vyntrise platform team for the production secret value.
+### Verifying a token
+
+Tokens are signed with **RS256**. Verify them against the published public keys — no secret is
+involved, and nothing needs to be requested from the platform team:
+
+```
+https://auth.vyntrise.com/.well-known/openid-configuration
+https://auth.vyntrise.com/.well-known/jwks.json
+```
+
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const JWKS = createRemoteJWKSet(
+  new URL('https://auth.vyntrise.com/.well-known/jwks.json')
+);
+
+const { payload } = await jwtVerify(token, JWKS, {
+  issuer: 'https://auth.vyntrise.com',
+});
+
+if (payload.typ !== 'access') throw new Error('Not an access token');
+```
+
+> **Do not ask for `JWT_SECRET`.** Earlier versions of this guide told integrators to verify with
+> that shared secret. Anything holding it can *mint* tokens as well as check them — one leaked
+> copy would compromise every platform at once. If you were given it, switch to the public keys
+> above and discard it.
+>
+> Signature verification proves the token is genuine and unexpired. It cannot see a revoked
+> session; call `/api/account/me` for that.
 
 ---
 

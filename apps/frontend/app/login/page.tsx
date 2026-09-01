@@ -13,6 +13,9 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  // Tracked separately from `error` because this one is recoverable — the user needs a link
+  // to the confirmation flow, not just a red box telling them they cannot get in.
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,6 +32,7 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setNeedsVerification(false);
 
     const platformId = searchParams.get('platformId');
 
@@ -72,6 +76,7 @@ function LoginForm() {
         }
       } else {
         setError(data.message || 'Login failed');
+        setNeedsVerification(data.code === 'EMAIL_NOT_VERIFIED');
       }
     } catch {
       setError('An error occurred during login');
@@ -95,6 +100,14 @@ function LoginForm() {
       {error && (
         <div className="mb-6 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
           {error}
+          {needsVerification && (
+            <Link
+              href="/verify-email"
+              className="block mt-2 font-normal text-red-300 underline hover:text-red-200"
+            >
+              Resend the confirmation link
+            </Link>
+          )}
         </div>
       )}
       <form onSubmit={handleLogin} className="space-y-4">

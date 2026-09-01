@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
+import { verifyToken } from '../services/signing-key.service';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -26,7 +26,9 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; email: string; sessionId?: string };
+    // Accepts both the current RS256 tokens and, until the last pre-rotation one expires,
+    // the legacy HS256 ones — see signing-key.service.
+    const decoded = await verifyToken(token, 'access');
 
     if (decoded.sessionId) {
       // Revocation is always enforced when the token carries a session id — a fast, indexed

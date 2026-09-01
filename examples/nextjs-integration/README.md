@@ -12,7 +12,7 @@ This directory contains reference implementations for integrating a Next.js appl
 
 2. **Update environment variables:**
    - Set `NEXT_PUBLIC_PLATFORM_ID` to your platform UUID from auth.vyntrise.com/admin/platforms
-   - Set `JWT_SECRET` to match the auth service (get from auth admin)
+   - No shared secret required — verify tokens against `https://auth.vyntrise.com/.well-known/jwks.json`
 
 3. **Use the API client in your app:**
    ```typescript

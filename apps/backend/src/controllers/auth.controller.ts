@@ -6,6 +6,8 @@ import prisma from '../db/prisma';
 import { logActivity } from '../services/audit.service';
 import { BCRYPT_ROUNDS } from '../config/env';
 import { emailService, notify } from '../services/email.service';
+import { signAccessToken, signRefreshToken, verifyToken } from '../services/signing-key.service';
+import { sendVerificationEmail } from './email-verification.controller';
 
 // A hash of an unguessable value, compared against when no user is found so the "no such
 // account" path costs the same as a wrong password — otherwise the timing difference alone
@@ -14,18 +16,16 @@ import { emailService, notify } from '../services/email.service';
 // and returning early, which would defeat the purpose silently.
 const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
 
-const generateTokens = (user: { id: string, email: string }, sessionId: string) => {
-  const accessToken = jwt.sign(
-    { id: user.id, email: user.email, sessionId },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '15m' }
-  );
+// Signing moved behind the key service so both tokens come from the rotating RS256 key pair
+// rather than the shared JWT_SECRET. Now async — the active key is a database read on a cold
+// cache — so every call site awaits.
+const generateTokens = async (user: { id: string, email: string }, sessionId: string) => {
+  const claims = { id: user.id, email: user.email, sessionId };
 
-  const refreshToken = jwt.sign(
-    { id: user.id, email: user.email, sessionId },
-    process.env.JWT_REFRESH_SECRET as string,
-    { expiresIn: '7d' }
-  );
+  const [accessToken, refreshToken] = await Promise.all([
+    signAccessToken(claims),
+    signRefreshToken(claims),
+  ]);
 
   return { accessToken, refreshToken };
 };
@@ -52,6 +52,23 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    // Checked only once the password is known to be correct, so an unauthenticated caller can
+    // never use this response to learn which addresses are registered or pending confirmation.
+    if (!user.emailVerified) {
+      logActivity({
+        action: 'LOGIN_BLOCKED_UNVERIFIED',
+        actorId: user.id,
+        targetType: 'user',
+        targetId: user.id,
+        metadata: { email: user.email },
+      });
+
+      return res.status(403).json({
+        message: 'Confirm your email address before signing in — check your inbox for the link.',
+        code: 'EMAIL_NOT_VERIFIED',
+      });
+    }
+
     // Check if user has access to the requested platform
     if (platformId) {
       const hasAccess = user.platforms.some((p: any) => p.platformId === platformId);
@@ -64,7 +81,7 @@ export const login = async (req: Request, res: Response) => {
     // revocation checks be a fast, always-enforced primary-key lookup instead of a bcrypt
     // scan that only ran when a refreshToken cookie happened to be present.
     const sessionId = crypto.randomUUID();
-    const { accessToken, refreshToken } = generateTokens(user, sessionId);
+    const { accessToken, refreshToken } = await generateTokens(user, sessionId);
 
     // Determine domain for cookies (use .vyntrise.com in production)
     const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
@@ -153,11 +170,15 @@ export const register = async (req: Request, res: Response) => {
       metadata: { email },
     });
 
-    notify(`welcome to ${email}`, () =>
-      emailService.sendWelcomeEmail(email, platform.name, platform.id)
-    );
+    // The row exists but cannot be signed into until the address is confirmed — see the
+    // emailVerified gate in login(). Without this, anyone could register under a stranger's
+    // address and permanently occupy it, since User.email is unique.
+    await sendVerificationEmail(user, platform.name);
 
-    res.status(201).json({ message: 'Account created successfully' });
+    res.status(201).json({
+      message: 'Account created. Check your email for a confirmation link.',
+      requiresEmailVerification: true,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Internal server error' });
@@ -172,7 +193,7 @@ export const logout = async (req: Request, res: Response) => {
     try {
       let sessionId: string | undefined;
       try {
-        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as { sessionId?: string };
+        const decoded = await verifyToken(refreshToken, 'refresh');
         sessionId = decoded.sessionId;
       } catch {
         // Refresh token invalid/expired — nothing to look up, fall through.
@@ -187,7 +208,7 @@ export const logout = async (req: Request, res: Response) => {
         let userId: string | undefined;
         if (accessToken) {
           try {
-            const decoded = jwt.verify(accessToken, process.env.JWT_SECRET as string) as { id: string };
+            const decoded = await verifyToken(accessToken, 'access');
             userId = decoded.id;
           } catch {
             // Access token may be expired — try to decode without verification to get the userId
@@ -226,7 +247,7 @@ export const refresh = async (req: Request, res: Response) => {
 
   let decoded: { id: string; email: string; sessionId?: string };
   try {
-    decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET as string) as typeof decoded;
+    decoded = await verifyToken(refreshToken, 'refresh');
   } catch {
     return res.status(403).json({ message: 'Invalid refresh token' });
   }
@@ -261,7 +282,7 @@ export const refresh = async (req: Request, res: Response) => {
     return res.status(403).json({ message: 'User not found' });
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = generateTokens({ id: user.id, email: user.email }, matchedSession.id);
+  const { accessToken, refreshToken: newRefreshToken } = await generateTokens({ id: user.id, email: user.email }, matchedSession.id);
   const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
 
   // Rotate the stored hashed token and update lastUsedAt

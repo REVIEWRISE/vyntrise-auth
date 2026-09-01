@@ -56,8 +56,15 @@ function RegisterForm() {
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess('Account created successfully! Redirecting to login...');
-        setTimeout(() => router.push('/login'), 2000);
+        // Self-registration now needs a confirmed address before sign-in works, so send the
+        // user to the page that explains that instead of to a login form that would reject them.
+        if (data.requiresEmailVerification) {
+          setSuccess('Account created. Check your email for a confirmation link.');
+          setTimeout(() => router.push('/verify-email'), 2500);
+        } else {
+          setSuccess('Account created successfully! Redirecting to login...');
+          setTimeout(() => router.push('/login'), 2000);
+        }
       } else {
         setError(data.message || 'Registration failed');
       }

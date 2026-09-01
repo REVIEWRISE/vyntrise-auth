@@ -44,6 +44,8 @@ services:
       GMAIL_USER: ${GMAIL_USER}
       GMAIL_APP_PASSWORD: ${GMAIL_APP_PASSWORD}
       FRONTEND_URL: ${FRONTEND_URL:-https://auth.vyntrise.com}
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://auth.vyntrise.com}
+      SIGNING_KEY_SECRET: ${SIGNING_KEY_SECRET}
     ports:
       - "3021:3021"
     networks:

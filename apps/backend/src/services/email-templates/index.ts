@@ -20,6 +20,23 @@ export function passwordResetEmail(resetLink: string): RenderedEmail {
   });
 }
 
+export function verifyEmailEmail(params: { verifyLink: string; platformName: string }): RenderedEmail {
+  return render({
+    subject: 'Confirm your email address',
+    title: 'Confirm your email address',
+    preheader: 'One click activates your account — this link expires in 24 hours.',
+    paragraphs: [
+      `An account on *${params.platformName}* was created with this email address.`,
+      'Confirm it below to activate the account and sign in.',
+      'This link expires in *24 hours*.',
+    ],
+    action: { label: 'Confirm email address', url: params.verifyLink },
+    // Deliberately not the generic IGNORE line: the reassurance that matters here is that
+    // doing nothing leaves the account unusable, which is the whole point of the step.
+    footnote: "If you didn't create this account, ignore this email — it stays inactive and nobody can sign in with it.",
+  });
+}
+
 export function emailChangedEmail(newEmail: string): RenderedEmail {
   return render({
     subject: 'Your Vyntrise email address was changed',

@@ -7,10 +7,12 @@ import inviteRoutes from './routes/invite.routes';
 import adminRoutes from './routes/admin.routes';
 import passwordResetRoutes from './routes/password-reset.routes';
 import accountRoutes from './routes/account.routes';
+import wellKnownRoutes from './routes/well-known.routes';
 import { emailProvider } from './services/email.service';
 import { authenticateJWT } from './middlewares/auth.middleware';
 import { assertRequiredEnv } from './config/env';
 import { reportEmailConfig } from './config/email';
+import { reportSigningKeys } from './services/signing-key.service';
 
 dotenv.config();
 assertRequiredEnv();
@@ -77,6 +79,12 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Discovery and public keys. Mounted at the standard path and mirrored under /api, because
+// the production reverse proxy only forwards /api to this service — the /api form is what
+// actually reaches us today, while the canonical one is rewritten to it by the frontend.
+app.use('/.well-known', wellKnownRoutes);
+app.use('/api/.well-known', wellKnownRoutes);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auth', passwordResetRoutes);
@@ -88,4 +96,7 @@ app.use('/api/account', authenticateJWT, accountRoutes);
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Email transport: ${emailProvider.name}`);
+
+  // After listen, so a slow database cannot delay the port opening and fail the health check.
+  void reportSigningKeys();
 });
