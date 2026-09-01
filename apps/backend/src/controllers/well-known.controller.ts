@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ISSUER, JWKS_PATH, DISCOVERY_PATH } from '../config/oidc';
+import { ISSUER, JWKS_PATH } from '../config/oidc';
 import { getJwks } from '../services/signing-key.service';
 
 /**
@@ -41,6 +41,5 @@ export function discovery(_req: Request, res: Response): void {
     response_types_supported: [],
     grant_types_supported: [],
     service_documentation: `${ISSUER}/admin/docs`,
-    _discovery_path: DISCOVERY_PATH,
   });
 }

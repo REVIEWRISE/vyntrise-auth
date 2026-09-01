@@ -22,14 +22,18 @@ const loginAccountLimiter = rateLimit(FIFTEEN_MIN, 25, emailOnlyKey);
 // well as per IP — otherwise it is a free way to flood someone's inbox from our domain.
 const resendLimiter = rateLimit(FIFTEEN_MIN, 5, ipAndEmailKey);
 const resendAccountLimiter = rateLimit(60 * 60 * 1000, 5, emailOnlyKey);
+// Confirmation tokens are unguessable, so this is not about brute force — it stops an
+// unauthenticated caller turning a token probe into a database query flood. Mirrors the
+// ceiling the password-reset token routes already use.
+const verifyLimiter = rateLimit(FIFTEEN_MIN, 20);
 
 router.post('/login', loginLimiter, loginAccountLimiter, login);
 router.post('/logout', logout);
 router.post('/refresh', refresh);
 router.post('/register', registerLimiter, register);
 
-router.get('/verify-email/:token', validateVerificationToken);
-router.post('/verify-email', verifyEmail);
+router.get('/verify-email/:token', verifyLimiter, validateVerificationToken);
+router.post('/verify-email', verifyLimiter, verifyEmail);
 router.post('/resend-verification', resendLimiter, resendAccountLimiter, resendVerification);
 
 // Example protected route

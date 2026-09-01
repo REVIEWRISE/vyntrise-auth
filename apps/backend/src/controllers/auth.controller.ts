@@ -173,7 +173,14 @@ export const register = async (req: Request, res: Response) => {
     // The row exists but cannot be signed into until the address is confirmed — see the
     // emailVerified gate in login(). Without this, anyone could register under a stranger's
     // address and permanently occupy it, since User.email is unique.
-    await sendVerificationEmail(user, platform.name);
+    try {
+      await sendVerificationEmail(user, platform.name);
+    } catch (error) {
+      // The account has already been created, so a 500 here would be a trap: the retry hits
+      // the "already exists" branch, and that account cannot be signed into yet. Report the
+      // success that did happen and let the user pull a fresh link from /resend-verification.
+      console.error('[register] Could not issue a verification token for', user.id, error);
+    }
 
     res.status(201).json({
       message: 'Account created. Check your email for a confirmation link.',

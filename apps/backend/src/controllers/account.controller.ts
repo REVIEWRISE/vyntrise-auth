@@ -85,10 +85,16 @@ export const changeEmail = async (req: AuthRequest, res: Response) => {
       emailService.sendEmailChangeNotification(oldEmail, newEmail)
     );
 
-    await sendVerificationEmail(
-      { id: updated.id, email: newEmail },
-      updated.platforms[0]?.platform.name ?? 'Vyntrise'
-    );
+    try {
+      await sendVerificationEmail(
+        { id: updated.id, email: newEmail },
+        updated.platforms[0]?.platform.name ?? 'Vyntrise'
+      );
+    } catch (error) {
+      // Same reasoning as register(): the address has already changed, so failing the response
+      // would misreport what happened. /resend-verification issues a new link.
+      console.error('[changeEmail] Could not issue a verification token for', updated.id, error);
+    }
 
     return res.json({
       id: updated.id,
