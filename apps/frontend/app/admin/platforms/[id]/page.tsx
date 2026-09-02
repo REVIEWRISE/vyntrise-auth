@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen, UserPlus, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen, UserPlus, Loader2, MailCheck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -178,7 +178,7 @@ export default function PlatformDetailPage() {
           <div>
             <p className="text-sm text-zinc-300">
               {platform.allowSelfRegistration
-                ? 'Anyone with the sign-up link below can create an account on this platform.'
+                ? 'Anyone with the sign-up link below can create an account, then confirm their email before signing in.'
                 : 'Closed — new users must be invited by an admin.'}
             </p>
           </div>
@@ -200,6 +200,36 @@ export default function PlatformDetailPage() {
             <CodeBlock lang="url" code={`${AUTH_BASE}/register?platformId=${platform.id}`} />
           </div>
         )}
+      </div>
+
+      {/* Email confirmation */}
+      <div>
+        <SectionHeader icon={MailCheck} title="Email Confirmation" color="bg-sky-500/10 border border-sky-500/20 text-sky-400" />
+        <p className="text-sm text-zinc-400 mb-2">
+          Self-registered accounts start unconfirmed and <strong className="text-zinc-200">cannot sign
+          in</strong> until the address is proven. Invited users skip this — receiving the invitation
+          already proves they read that mailbox. Changing an account&apos;s email also clears its
+          confirmed state, so an existing user can land here too.
+        </p>
+        <p className="text-sm text-zinc-400 mb-2">
+          Sign-in on an unconfirmed account returns <IC>403</IC> with a code to branch on. Handle it
+          separately from <IC>401</IC> — refreshing the token will not fix it.
+        </p>
+        <CodeBlock lang="typescript" code={`if (res.status === 403) {
+  const data = await res.json().catch(() => ({}));
+  if (data.code === 'EMAIL_NOT_VERIFIED') {
+    // Not a permissions problem — the account exists but is unconfirmed.
+    window.location.href = '/check-your-email';
+    return;
+  }
+}
+
+// Ask for a fresh link if the first one expired (24h) or was lost
+await fetch('${AUTH_BASE}/api/auth/resend-verification', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email }),
+});`} />
       </div>
 
       {/* Step 1 */}
@@ -269,6 +299,23 @@ export default function SsoCallback() {
   }, [params, router]);
 
   return <p className="p-8 text-center text-zinc-400">Authenticating...</p>;
+}`} />
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2 mt-4">Verifying the token yourself</p>
+        <p className="text-sm text-zinc-400 mb-2">
+          Tokens are signed with <IC>RS256</IC>, so your app can verify them locally against the
+          published public keys — no shared secret, and no round trip to the auth server on every
+          request. Keys rotate, so fetch the JWKS rather than pinning one.
+        </p>
+        <CodeBlock lang="typescript" code={`import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const JWKS = createRemoteJWKSet(new URL('${AUTH_BASE}/.well-known/jwks.json'));
+
+export async function verifyToken(token: string) {
+  const { payload } = await jwtVerify(token, JWKS, { issuer: '${AUTH_BASE}' });
+  return payload; // throws if the signature, issuer, or expiry is bad
 }`} />
       </div>
 
@@ -399,6 +446,11 @@ if (res.status === 401) {
                 { method: 'GET', path: '/api/account/me', desc: 'Get user profile + platform roles' },
                 { method: 'POST', path: '/api/auth/refresh', desc: 'Refresh access token via cookie' },
                 { method: 'POST', path: '/api/auth/logout', desc: 'Logout and clear session' },
+                ...(platform.allowSelfRegistration
+                  ? [{ method: 'POST', path: '/api/auth/resend-verification', desc: 'Re-issue an email confirmation link' }]
+                  : []),
+                { method: 'GET', path: '/.well-known/jwks.json', desc: 'Public keys for verifying token signatures' },
+                { method: 'GET', path: '/.well-known/openid-configuration', desc: 'Issuer metadata and supported algorithms' },
               ].map(({ method, path, desc }) => (
                 <tr key={path} className="hover:bg-zinc-900/30">
                   <td className="px-4 py-3">

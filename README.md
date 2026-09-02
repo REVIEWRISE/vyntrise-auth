@@ -24,11 +24,15 @@ vyntrise-auth-mono/
 │   │   │   ├── middlewares/
 │   │   │   │   ├── auth.middleware.ts         # authenticateJWT
 │   │   │   │   └── admin.middleware.ts        # requireAdmin
+│   │   │   ├── config/
+│   │   │   │   └── email.ts                   # validated email settings, one source of truth
 │   │   │   ├── services/
-│   │   │   │   ├── email.service.ts           # EmailService interface + factory
+│   │   │   │   ├── email.service.ts           # send methods + notify() fire-and-forget helper
+│   │   │   │   ├── email-templates/           # one renderer, HTML + plain-text per email
 │   │   │   │   └── email-providers/
-│   │   │   │       ├── console.provider.ts    # dev: logs to stdout
-│   │   │   │       └── gmail.provider.ts      # production: Gmail via nodemailer
+│   │   │   │       ├── console.provider.ts    # dev: logs to stdout, sends nothing
+│   │   │   │       ├── smtp.provider.ts       # production: any SMTP host
+│   │   │   │       └── gmail.provider.ts      # Gmail via nodemailer (low volume)
 │   │   │   └── server.ts
 │   │   └── prisma/
 │   │       └── schema.prisma
@@ -97,16 +101,24 @@ ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
 FRONTEND_URL=http://localhost:3001
 
 # Email
-# Options: "console" (logs to stdout), "smtp" (generic SMTP), "gmail" (Gmail-specific)
+# Options: "console" (logs to stdout, sends nothing), "smtp" (any SMTP host), "gmail"
+# A provider with missing credentials logs an error and falls back to console rather than
+# failing at send time — check the boot log after changing this.
 EMAIL_PROVIDER=console
+
+# Sender identity, applies to every provider. EMAIL_FROM defaults to SMTP_USER/GMAIL_USER,
+# but only when that value is itself an address — SendGrid and similar authenticate as the
+# literal string "apikey", which cannot be used in a From header.
+# EMAIL_FROM=noreply@vyntrise.com
+EMAIL_FROM_NAME=Vyntrise
 
 # For SMTP provider (recommended for production)
 # SMTP_HOST=smtp.example.com
 # SMTP_PORT=587
+# SMTP_SECURE defaults to true for port 465 and false otherwise; set it only to override
 # SMTP_SECURE=false
 # SMTP_USER=your-email@example.com
 # SMTP_PASSWORD=your-smtp-password
-# SMTP_FROM=noreply@vyntrise.com
 
 # For Gmail provider (simple setup, low volume)
 GMAIL_USER=your-gmail@gmail.com
