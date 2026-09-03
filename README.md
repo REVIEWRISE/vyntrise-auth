@@ -152,12 +152,28 @@ Every login creates a `Session` record. `POST /api/auth/refresh` rotates the sto
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/login` | — | Login with email + password |
+| POST | `/login` | — | Login with email + password. `403` + `code: EMAIL_NOT_VERIFIED` if unconfirmed |
 | POST | `/logout` | — | Clear cookies + delete session |
 | POST | `/refresh` | — | Rotate access token using refresh cookie |
+| POST | `/register` | — | Self-registration; only for platforms with `allowSelfRegistration` |
+| GET | `/verify-email/:token` | — | Validate an email confirmation token |
+| POST | `/verify-email` | — | Consume the token and mark the address confirmed |
+| POST | `/resend-verification` | — | Request a fresh confirmation link |
 | POST | `/forgot-password` | — | Send password reset email |
 | GET | `/reset-password/:token` | — | Validate reset token |
 | POST | `/reset-password` | — | Reset password using token |
+| GET | `/me` | JWT | Decoded token claims |
+
+All unauthenticated routes above are rate limited — see `rate-limit.middleware.ts`.
+
+### Discovery (`/.well-known`)
+
+Also mounted at `/api/.well-known`, for proxies that only forward `/api`.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/jwks.json` | — | Public signing keys. Verify tokens against this |
+| GET | `/openid-configuration` | — | Issuer, JWKS URI, supported algorithms and claims |
 
 ### Account (`/api/account`) — requires JWT
 
@@ -167,7 +183,8 @@ Every login creates a `Session` record. `POST /api/auth/refresh` rotates the sto
 | PATCH | `/email` | Change email address |
 | PATCH | `/password` | Change password |
 | GET | `/sessions` | List active sessions |
-| DELETE | `/sessions/:id` | Revoke a session |
+| DELETE | `/sessions` | Sign out everywhere — revoke every other session |
+| DELETE | `/sessions/:id` | Revoke a single session |
 | DELETE | `/` | Delete account |
 
 ### Admin (`/api/admin`) — requires JWT + platform admin role
@@ -176,10 +193,15 @@ Every login creates a `Session` record. `POST /api/auth/refresh` rotates the sto
 |---|---|---|
 | GET | `/stats` | Dashboard stats (users, invites) |
 | GET | `/users` | List platform users |
+| PATCH | `/users/:userId` | Change a user's role within the platform |
+| DELETE | `/users/:userId` | Remove a user from the platform |
 | GET | `/invites` | List platform invitations |
 | POST | `/invites` | Create an invitation |
+| DELETE | `/invites/:id` | Revoke a pending invitation |
 | GET | `/platforms` | List all platforms |
 | POST | `/platforms` | Create a new platform |
+| GET | `/platforms/:id` | Platform detail — admin of that platform only |
+| PATCH | `/platforms/:id` | Update platform settings, e.g. `allowSelfRegistration` |
 
 ### Invite (`/api/invite`)
 
