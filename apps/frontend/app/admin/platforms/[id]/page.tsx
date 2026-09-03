@@ -211,9 +211,17 @@ export default function PlatformDetailPage() {
           already proves they read that mailbox. Changing an account&apos;s email also clears its
           confirmed state, so an existing user can land here too.
         </p>
+        <div className="mb-3 p-3 rounded-lg bg-zinc-800/40 border border-zinc-700/50 text-sm text-zinc-400">
+          <strong className="text-zinc-200">Using the redirect flow below? There is nothing to
+          build here.</strong> The user signs in on <IC>auth.vyntrise.com</IC>, which shows the
+          error and a resend link itself. An unconfirmed user never reaches your callback, so your
+          app only ever receives tokens for confirmed accounts.
+        </div>
         <p className="text-sm text-zinc-400 mb-2">
-          Sign-in on an unconfirmed account returns <IC>403</IC> with a code to branch on. Handle it
-          separately from <IC>401</IC> — refreshing the token will not fix it.
+          The rest of this section applies only if your app posts credentials to{' '}
+          <IC>/api/auth/login</IC> directly instead of redirecting. In that case sign-in on an
+          unconfirmed account returns <IC>403</IC> with a code to branch on. Handle it separately
+          from <IC>401</IC> — refreshing the token will not fix it.
         </p>
         <CodeBlock lang="typescript" code={`if (res.status === 403) {
   const data = await res.json().catch(() => ({}));
@@ -230,6 +238,13 @@ await fetch('${AUTH_BASE}/api/auth/resend-verification', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ email }),
 });`} />
+        <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+          Resending is capped at <strong>5 per 15 minutes</strong> per address and{' '}
+          <strong>5 per hour</strong> per address overall — it triggers outbound mail from our
+          domain without authentication. Do not retry it in a loop; surface the failure instead.
+          The response is deliberately identical whether or not the address exists, so a{' '}
+          <IC>200</IC> is not confirmation that mail was sent.
+        </div>
       </div>
 
       {/* Step 1 */}
