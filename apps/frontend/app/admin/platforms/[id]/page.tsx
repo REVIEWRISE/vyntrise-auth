@@ -2,11 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen, UserPlus, Loader2, MailCheck } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Zap, Key, RefreshCw, Shield, BookOpen, UserPlus, Loader2, MailCheck, KeyRound, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { CopyButton } from '@/components/copy-button';
+
+interface InviteKeySummary {
+  id: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
 
 interface Platform {
   id: string;
@@ -15,6 +22,8 @@ interface Platform {
   allowSelfRegistration: boolean;
   createdAt: string;
   userCount: number;
+  // Metadata only. The key itself is returned exactly once, by the call that creates it.
+  inviteKey: InviteKeySummary | null;
 }
 
 function CodeBlock({ code, lang = 'bash' }: { code: string; lang?: string }) {
@@ -67,6 +76,46 @@ export default function PlatformDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [togglingSelfReg, setTogglingSelfReg] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState('');
+  // Held in memory for this render only — there is no way to fetch it back afterwards.
+  const [freshKey, setFreshKey] = useState<string | null>(null);
+
+  const issueInviteKey = async () => {
+    setKeyBusy(true);
+    // Deliberately not the page-level `error`: that one triggers the early return below and
+    // would replace the whole page with a message for what is a failure in one section.
+    setKeyError('');
+    try {
+      const res = await apiFetch(`/api/admin/platforms/${id}/invite-key`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to create invite key');
+      setFreshKey(data.rawKey);
+      setPlatform((p) => (p ? { ...p, inviteKey: data.key } : p));
+    } catch (err) {
+      setKeyError((err as Error).message);
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const revokeInviteKey = async () => {
+    setKeyBusy(true);
+    // Deliberately not the page-level `error`: that one triggers the early return below and
+    // would replace the whole page with a message for what is a failure in one section.
+    setKeyError('');
+    try {
+      const res = await apiFetch(`/api/admin/platforms/${id}/invite-key`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to revoke invite key');
+      setFreshKey(null);
+      setPlatform((p) => (p ? { ...p, inviteKey: null } : p));
+    } catch (err) {
+      setKeyError((err as Error).message);
+    } finally {
+      setKeyBusy(false);
+    }
+  };
 
   const toggleSelfRegistration = async () => {
     if (!platform) return;
@@ -200,6 +249,116 @@ export default function PlatformDetailPage() {
             <CodeBlock lang="url" code={`${AUTH_BASE}/register?platformId=${platform.id}`} />
           </div>
         )}
+      </div>
+
+      {/* Invite API key */}
+      <div>
+        <SectionHeader icon={KeyRound} title="Invite API Key" color="bg-violet-500/10 border border-violet-500/20 text-violet-400" />
+        <p className="text-sm text-zinc-400 mb-3">
+          Lets this platform&apos;s own backend create invitations directly, so onboarding a user
+          is one action in your app instead of a second one here. The key works only for{' '}
+          <strong className="text-zinc-200">{platform.name}</strong> and can only invite at the{' '}
+          <IC>USER</IC> role — it is not an admin credential.
+        </p>
+
+        {keyError && (
+          <div className="mb-3 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            {keyError}
+          </div>
+        )}
+
+        {freshKey && (
+          <div className="mb-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/30">
+            <div className="flex items-center gap-2 mb-2 text-amber-400">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Copy this now — it will not be shown again</span>
+            </div>
+            <div className="flex items-center gap-2 p-2 rounded bg-zinc-950/60 border border-zinc-800">
+              <code className="text-xs font-mono text-zinc-200 break-all flex-1">{freshKey}</code>
+              <CopyButton text={freshKey} />
+            </div>
+            <p className="text-xs text-amber-400/80 mt-2">
+              Store it as a secret in your platform&apos;s environment. If it leaks, revoke it here
+              — that takes effect immediately.
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-900/50 border border-zinc-800 gap-4">
+          <div className="min-w-0">
+            {platform.inviteKey ? (
+              <>
+                <p className="text-sm text-zinc-300 font-mono">
+                  {platform.inviteKey.prefix}
+                  <span className="text-zinc-600">{'…'}</span>
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Created {new Date(platform.inviteKey.createdAt).toLocaleDateString()} ·{' '}
+                  {platform.inviteKey.lastUsedAt
+                    ? `last used ${new Date(platform.inviteKey.lastUsedAt).toLocaleString()}`
+                    : 'never used'}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-300">
+                No key issued. This platform cannot create invitations programmatically.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {platform.inviteKey && (
+              <Button
+                onClick={revokeInviteKey}
+                disabled={keyBusy}
+                variant="outline"
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              >
+                Revoke
+              </Button>
+            )}
+            <Button
+              onClick={issueInviteKey}
+              disabled={keyBusy}
+              className="bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold"
+            >
+              {keyBusy
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : platform.inviteKey ? 'Regenerate' : 'Generate key'}
+            </Button>
+          </div>
+        </div>
+
+        {platform.inviteKey && (
+          <p className="text-xs text-zinc-500 mt-2">
+            Regenerating issues a new key and invalidates the current one immediately. Deploy the
+            new value before regenerating, or calls will start failing.
+          </p>
+        )}
+
+        <p className="text-sm text-zinc-400 mt-4 mb-1">
+          Send the key as a <IC>Bearer</IC> token. The invitation it creates is identical to one
+          made from the Invites page — same 7-day expiry, same email, same Revoke button.
+        </p>
+        <CodeBlock lang="typescript" code={`await fetch(
+  '${AUTH_BASE}/api/admin/platforms/${platform.id}/invites',
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // Never hard-code this — read it from your platform's secret store.
+      Authorization: \`Bearer \${process.env.VYNTRISE_INVITE_KEY}\`,
+    },
+    body: JSON.stringify({ email: 'newuser@example.com' }),
+  },
+);
+
+// 201 { message, token, registerLink }
+// 409 an invitation for this address is already live
+// 401 key is unknown, revoked, or issued for a different platform`} />
+        <div className="mt-1 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+          Rate limited per key: 20 per minute, 200 per hour, and 5 per hour to any single address.
+          Call it from your server — a key shipped to a browser is a public key.
+        </div>
       </div>
 
       {/* Email confirmation */}
@@ -463,6 +622,9 @@ if (res.status === 401) {
                 { method: 'POST', path: '/api/auth/logout', desc: 'Logout and clear session' },
                 ...(platform.allowSelfRegistration
                   ? [{ method: 'POST', path: '/api/auth/resend-verification', desc: 'Re-issue an email confirmation link' }]
+                  : []),
+                ...(platform.inviteKey
+                  ? [{ method: 'POST', path: `/api/admin/platforms/${platform.id}/invites`, desc: 'Create an invitation (invite key, not a user session)' }]
                   : []),
                 { method: 'GET', path: '/.well-known/jwks.json', desc: 'Public keys for verifying token signatures' },
                 { method: 'GET', path: '/.well-known/openid-configuration', desc: 'Issuer metadata and supported algorithms' },

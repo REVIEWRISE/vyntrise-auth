@@ -17,6 +17,39 @@ export const requireExplicitPlatform = (req: AuthRequest, res: Response, next: N
   next();
 };
 
+// Admin of the platform named in the route, specifically — not "admin of some platform". Same
+// check getPlatformById and updatePlatformSettings already make inline; routes that manage a
+// platform's invite key use it as middleware so the check cannot be forgotten in a controller.
+export const requirePlatformAdminParam = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized' });
+      return;
+    }
+
+    const platformId = String(req.params.id ?? req.params.platformId);
+
+    const access = await prisma.userPlatformAccess.findFirst({
+      where: { userId, platformId, role: 'ADMIN' },
+    });
+
+    if (!access) {
+      res.status(403).json({ message: 'Forbidden: Admin access required for this platform' });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    console.error('requirePlatformAdminParam error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const user = req.user;

@@ -4,6 +4,46 @@ All notable changes to the Vyntrise Auth project.
 
 ---
 
+## [1.4.0] - 2026-09-03
+
+### Features
+
+#### Platform-scoped invite keys
+
+A platform's own backend can now create invitations for itself, so onboarding a user is one
+action in that platform's admin UI instead of a second one in this app.
+
+- **`POST /api/admin/platforms/:platformId/invites`** — server-to-server, authenticated by
+  `Authorization: Bearer <invite key>` rather than a user session
+- **Key management** on the platform's own admin page, next to Self-Registration:
+  `POST`/`DELETE /api/admin/platforms/:id/invite-key`. The key is shown once and cannot be
+  retrieved afterwards, only replaced
+- **New model `PlatformInviteKey`** — stores a SHA-256 digest of the key, the same treatment
+  invite and reset tokens already get, plus a short non-secret prefix so the admin page can show
+  which key is live
+
+#### Scope, deliberately narrow
+
+- A key is bound to one platform at creation. Presenting it against a different `:platformId`
+  is rejected `401` — not `403`, which would confirm the other platform exists. This is the
+  whole reason it is not a general admin API key: a leaked key can only invite people into the
+  platform it was issued for, which is no more than a human admin of that platform already has
+- Role is fixed at `USER`. `ADMIN` grants access to this service's admin panel, so a platform
+  backend must never be able to mint it — inviting an admin still goes through the human form
+- Rate limited per key: 20/min, 200/hour, and 5/hour to any single address, mirroring the
+  ceilings on resend-verification since this endpoint also sends mail
+
+### Internal
+
+- `createInvitation` extracted to `services/invite.service.ts` and shared by the admin form and
+  the API, so an invitation created either way is the same record — same 7-day expiry, same
+  email, same Revoke button, and invited users still skip email confirmation
+- `INVITE_CREATED` audit entries gained an `origin` field (`admin` or `api`) and, for API calls,
+  the key id. Extends the existing trail rather than adding a parallel one
+- New audit actions `INVITE_KEY_CREATED` and `INVITE_KEY_REVOKED`
+
+---
+
 ## [1.3.0] - 2026-09-02
 
 ### ⚠️ Breaking for platform integrators

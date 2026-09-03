@@ -2,7 +2,7 @@
 
 Complete guide to all documentation in the Vyntrise Auth monorepo.
 
-**Last updated:** September 2, 2026 · **Version:** 1.3.0
+**Last updated:** September 3, 2026 · **Version:** 1.4.0
 
 ---
 
@@ -102,7 +102,8 @@ General SSO integration guide: login redirect, callback, token verification, ses
 
 ### 7. `/admin/platforms/[id]` — [apps/frontend/app/admin/platforms/\[id\]/page.tsx](./apps/frontend/app/admin/platforms/%5Bid%5D/page.tsx)
 Per-platform guide with that platform's real IDs and URLs filled in: sign-up and login links,
-email confirmation flow, token verification, and an endpoint reference table.
+email confirmation flow, token verification, invite API key management, and an endpoint
+reference table.
 
 ---
 
@@ -160,6 +161,7 @@ Models:
 - `AuditLog`
 - `EmailVerificationToken`
 - `SigningKey`
+- `PlatformInviteKey`
 
 Migrations, in order:
 
@@ -171,6 +173,7 @@ Migrations, in order:
 | `20260821201914_cascade_delete_user_platform_access` | Cascade delete |
 | `20260825094500_add_platform_self_registration` | `Platform.allowSelfRegistration` |
 | `20260901120000_add_email_verification_and_signing_keys` | `EmailVerificationToken`, `SigningKey`, `User.emailVerified*` (backfilled `true` for existing accounts) |
+| `20260903120000_add_platform_invite_keys` | `PlatformInviteKey` (additive; no change to existing tables) |
 
 ---
 
@@ -178,18 +181,18 @@ Migrations, in order:
 
 | Document | Purpose | Audience | Last updated |
 |----------|---------|----------|--------------|
-| README.md | Project overview | All developers | 2026-09-02 |
+| README.md | Project overview | All developers | 2026-09-03 |
 | SSO_INTEGRATION_GUIDE.md | Platform integration | Platform developers | 2026-09-01 |
 | SSO_SESSION_VALIDATION_GUIDE.md | Session revocation | Platform developers | 2026-09-01 |
 | INTEGRATION_TESTING_GUIDE.md | Integration testing | Platform developers | 2026-09-01 |
 | CORS_SETUP_GUIDE.md | CORS configuration | All developers | 2026-06-16 |
 | EMAIL_SETUP.md | Email configuration | Backend developers | 2026-08-28 |
-| CHANGELOG.md | Version history | All developers | 2026-09-02 |
+| CHANGELOG.md | Version history | All developers | 2026-09-03 |
 | DOCUMENTATION_VERIFICATION.md | What has been checked, and what has not | Maintainers | 2026-09-02 |
 | .env.example | Environment setup | DevOps/Backend | 2026-09-01 |
 | examples/nextjs-integration/ | Reference implementation | Frontend developers | 2026-09-01 |
 | `/admin/docs` (in-product) | SSO integration | Platform owners | 2026-09-01 |
-| `/admin/platforms/[id]` (in-product) | Per-platform guide | Platform owners | 2026-09-02 |
+| `/admin/platforms/[id]` (in-product) | Per-platform guide | Platform owners | 2026-09-03 |
 
 ---
 

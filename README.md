@@ -202,6 +202,25 @@ Also mounted at `/api/.well-known`, for proxies that only forward `/api`.
 | POST | `/platforms` | Create a new platform |
 | GET | `/platforms/:id` | Platform detail — admin of that platform only |
 | PATCH | `/platforms/:id` | Update platform settings, e.g. `allowSelfRegistration` |
+| POST | `/platforms/:id/invite-key` | Issue an invite key, revoking the platform's previous one. Returns the key once |
+| DELETE | `/platforms/:id/invite-key` | Revoke the platform's invite key |
+
+### Platform invite API (`/api/admin/platforms/:platformId`)
+
+Server-to-server, for a platform's own backend to create invitations without a human in the
+admin panel. Authenticated by a platform-scoped invite key, **not** a user session.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/invites` | `Authorization: Bearer <invite key>` | Create an invitation for this platform |
+
+The key is issued from that platform's admin page and is bound to it at creation: presenting it
+against a different `:platformId` returns `401`, so a leaked key can only invite people into the
+one platform it belongs to. The role is fixed at `USER` — inviting an admin still requires the
+human form, since `ADMIN` grants access to this service's own admin panel. Body is
+`{ email, role?: 'USER' }`; the response matches the admin form's (`token`, `registerLink`), and
+the invitation produced is the same record, with the same 7-day expiry and the same Revoke
+button. Rate limited per key: 20/min, 200/hour, and 5/hour to any one address.
 
 ### Invite (`/api/invite`)
 

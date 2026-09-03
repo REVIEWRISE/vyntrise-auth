@@ -21,6 +21,7 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   sessions                Session[]
   auditLogs               AuditLog[]
+  inviteKeysCreated       PlatformInviteKey[]
 }
 
 model Platform {
@@ -34,6 +35,7 @@ model Platform {
   users       UserPlatformAccess[]
   invitations Invitation[]
   auditLogs   AuditLog[]
+  inviteKeys  PlatformInviteKey[]
 }
 
 model UserPlatformAccess {
@@ -116,6 +118,35 @@ model EmailVerificationToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// A credential that lets one platform's own backend create invitations for itself, without a
+// human opening the admin panel. Deliberately bound to a single platform at creation: a leaked
+// key can only invite people into the platform it was issued for, which is the same blast radius
+// a human admin of that platform already has.
+model PlatformInviteKey {
+  id         String    @id @default(uuid())
+  platformId String
+  // SHA-256 of the key, for the same reason invite and reset tokens are hashed (see
+  // utils/token.ts): the key is 256 bits of CSPRNG output, so a database read yields digests
+  // rather than working credentials, and the digest stays indexable for per-request lookup.
+  keyHash    String    @unique
+  // First few characters of the raw key, kept in the clear so the admin page can show *which*
+  // key is live. Far too short to narrow the search space.
+  prefix     String
+  createdAt  DateTime  @default(now())
+  createdById String?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  platform  Platform @relation(fields: [platformId], references: [id])
+  createdBy User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Issuing a key revokes the platform's previous one, so in practice there is a single live key
+  // per platform; revoked rows are kept for the audit trail. Two admins clicking Generate at the
+  // same instant could interleave and leave two live keys — harmless, since both are scoped to
+  // this same platform and Revoke clears every live key at once, not just the newest.
+  @@index([platformId, revokedAt])
 }
 
 model SigningKey {

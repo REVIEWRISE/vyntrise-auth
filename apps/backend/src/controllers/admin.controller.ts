@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../db/prisma';
-import crypto from 'crypto';
 import { emailService, notify } from '../services/email.service';
-import { emailConfig } from '../config/email';
 import { logActivity } from '../services/audit.service';
-import { hashToken } from '../utils/token';
+import { createInvitation } from '../services/invite.service';
+import {
+  generateInviteKey,
+  getActiveInviteKey,
+  revokeInviteKeys,
+} from '../services/platform-invite-key.service';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
   try {
@@ -263,47 +266,22 @@ export const createInvite = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Role must be USER or ADMIN' });
     }
 
-    // Check if there's already an active unused invite for this email+platform
-    const existing = await prisma.invitation.findUnique({
-      where: { email_platformId: { email, platformId } },
-    });
-    if (existing && !existing.isUsed && existing.expiresAt > new Date()) {
-      return res.status(409).json({ message: 'An active invitation already exists for this email' });
-    }
-
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    // Only the digest is persisted — the raw token exists solely in the link below.
-    const storedToken = hashToken(token);
-
-    // Store the role in the invitation so it can be applied during registration
-    const invitation = await prisma.invitation.upsert({
-      where: { email_platformId: { email, platformId } },
-      update: { token: storedToken, expiresAt, isUsed: false, role },
-      create: { email, platformId, token: storedToken, expiresAt, role },
-      include: { platform: { select: { name: true } } },
-    });
-
-    const registerLink = `${emailConfig.appUrl}/register?token=${token}`;
-
-    logActivity({
-      action: 'INVITE_CREATED',
+    const result = await createInvitation({
       platformId,
+      email,
+      role,
       actorId: (req as any).user?.id,
-      targetType: 'invitation',
-      targetId: invitation.id,
-      metadata: { email, role },
+      origin: 'admin',
     });
 
-    notify(`invitation to ${email}`, () =>
-      emailService.sendInviteEmail(email, registerLink, invitation.platform.name, role)
-    );
+    if (!result.ok) {
+      return res.status(result.status).json({ message: result.message });
+    }
 
     res.status(201).json({
       message: 'Invitation created',
-      token,
-      registerLink,
+      token: result.token,
+      registerLink: result.registerLink,
     });
   } catch (error) {
     console.error('createInvite error:', error);
@@ -369,6 +347,8 @@ export const getPlatformById = async (req: Request, res: Response) => {
     }
 
     const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+    // Metadata only — the key itself is unrecoverable after the call that created it.
+    const inviteKey = await getActiveInviteKey(id);
 
     res.json({
       id: platform.id,
@@ -377,6 +357,7 @@ export const getPlatformById = async (req: Request, res: Response) => {
       allowSelfRegistration: platform.allowSelfRegistration,
       createdAt: platform.createdAt,
       userCount,
+      inviteKey,
     });
   } catch (error) {
     console.error('getPlatformById error:', error);
@@ -424,6 +405,8 @@ export const updatePlatformSettings = async (req: Request, res: Response) => {
     }
 
     const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+    // Included so a settings change does not blank the key state the client is holding.
+    const inviteKey = await getActiveInviteKey(id);
 
     res.json({
       id: platform.id,
@@ -432,6 +415,7 @@ export const updatePlatformSettings = async (req: Request, res: Response) => {
       allowSelfRegistration: platform.allowSelfRegistration,
       createdAt: platform.createdAt,
       userCount,
+      inviteKey,
     });
   } catch (error) {
     console.error('updatePlatformSettings error:', error);
@@ -480,6 +464,75 @@ export const createPlatform = async (req: Request, res: Response) => {
     res.status(201).json(platform);
   } catch (error) {
     console.error('createPlatform error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// ── Platform invite keys ─────────────────────────────────────────────────────────────────────
+// Human-operated management of the credential a platform's backend uses to create invitations.
+// Both routes sit behind requirePlatformAdminParam, so they are scoped to one platform the
+// caller actually administers.
+
+export const issuePlatformInviteKey = async (req: Request, res: Response) => {
+  try {
+    const platformId = String(req.params.id);
+    const actorId = (req as any).user?.id ?? null;
+
+    const platform = await prisma.platform.findUnique({ where: { id: platformId } });
+    if (!platform) {
+      return res.status(404).json({ message: 'Platform not found' });
+    }
+
+    const existing = await getActiveInviteKey(platformId);
+    const key = await generateInviteKey(platformId, actorId);
+
+    logActivity({
+      action: 'INVITE_KEY_CREATED',
+      platformId,
+      actorId,
+      targetType: 'platformInviteKey',
+      targetId: key.id,
+      // `replaced` makes a rotation legible in the trail: a second key appearing without it
+      // would look like two live credentials rather than one succeeding another.
+      metadata: existing ? { prefix: key.prefix, replaced: existing.id } : { prefix: key.prefix },
+    });
+
+    // The only response that will ever contain rawKey.
+    res.status(201).json({
+      message: 'Invite key created. Copy it now — it cannot be shown again.',
+      rawKey: key.rawKey,
+      key: { id: key.id, prefix: key.prefix, createdAt: key.createdAt, lastUsedAt: null },
+    });
+  } catch (error) {
+    console.error('issuePlatformInviteKey error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const revokePlatformInviteKey = async (req: Request, res: Response) => {
+  try {
+    const platformId = String(req.params.id);
+    const actorId = (req as any).user?.id ?? null;
+
+    const existing = await getActiveInviteKey(platformId);
+    const revoked = await revokeInviteKeys(platformId);
+
+    if (revoked === 0) {
+      return res.status(404).json({ message: 'No active invite key for this platform' });
+    }
+
+    logActivity({
+      action: 'INVITE_KEY_REVOKED',
+      platformId,
+      actorId,
+      targetType: 'platformInviteKey',
+      targetId: existing?.id,
+      metadata: existing ? { prefix: existing.prefix } : {},
+    });
+
+    res.json({ message: 'Invite key revoked' });
+  } catch (error) {
+    console.error('revokePlatformInviteKey error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
