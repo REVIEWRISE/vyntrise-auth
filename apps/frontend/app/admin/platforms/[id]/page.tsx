@@ -355,7 +355,14 @@ export default function PlatformDetailPage() {
 // 201 { message, token, registerLink }
 // 409 an invitation for this address is already live
 // 401 key is unknown, revoked, or issued for a different platform`} />
-        <div className="mt-1 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
+        <p className="text-sm text-zinc-400 mt-1">
+          Treat <IC>409</IC> as success, not failure. It means the person already has a live
+          invitation, which is exactly the state you wanted — retrying or surfacing an error here
+          just makes a re-run of your own onboarding look broken. A live invite is never silently
+          replaced, because that would invalidate the link already sitting in their inbox; wait
+          for it to expire, or revoke it from the Invites page to issue a new one.
+        </p>
+        <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
           Rate limited per key: 20 per minute, 200 per hour, and 5 per hour to any single address.
           Call it from your server — a key shipped to a browser is a public key.
         </div>
