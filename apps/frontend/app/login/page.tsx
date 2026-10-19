@@ -58,8 +58,17 @@ function LoginForm() {
             const url = new URL(redirectUrl);
             // Only ever redirect to a *.vyntrise.com subdomain over HTTPS — anything else
             // is an open redirect / token-exfiltration vector (or, for javascript: URIs, XSS).
-            const isAllowedHost = url.protocol === 'https:'
+            const isVyntriseHost = url.protocol === 'https:'
               && (url.hostname === 'vyntrise.com' || url.hostname.endsWith('.vyntrise.com'));
+            // A platform app under local development runs on localhost, usually over plain
+            // http. Allowed automatically in a dev build of this app; a production build allows
+            // it only when NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT is baked in as 'true', since it
+            // hands a live token to whatever is listening on that port of the user's machine.
+            const isLocalhost = (url.protocol === 'http:' || url.protocol === 'https:')
+              && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+            const localhostAllowed = process.env.NODE_ENV !== 'production'
+              || process.env.NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT === 'true';
+            const isAllowedHost = isVyntriseHost || (isLocalhost && localhostAllowed);
             const isSafePath = !url.pathname.includes('/error') && !url.pathname.includes('/api/auth/error');
             if (isAllowedHost && isSafePath) {
               url.searchParams.append('token', data.accessToken);

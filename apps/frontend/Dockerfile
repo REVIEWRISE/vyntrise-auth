@@ -19,6 +19,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG BACKEND_INTERNAL_URL=http://backend:3021
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
+# Lets the login page redirect to http://localhost so platform apps can be developed against the
+# deployed auth server. Off unless the build passes 'true'; inlined into the client bundle.
+ARG NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT=false
+ENV NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT=$NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT
+
 RUN npm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────

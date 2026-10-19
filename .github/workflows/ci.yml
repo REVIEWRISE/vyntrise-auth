@@ -90,6 +90,10 @@ jobs:
         with:
           context: ./apps/frontend
           push: true
+          # Set the repository variable ALLOW_LOCALHOST_REDIRECT to 'true' to let platform apps
+          # running on localhost sign in against production. Unset means off.
+          build-args: |
+            NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT=${{ vars.ALLOW_LOCALHOST_REDIRECT || 'false' }}
           tags: |
             ${{ env.IMAGE_FRONTEND }}:latest
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}

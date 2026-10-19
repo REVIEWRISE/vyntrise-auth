@@ -216,7 +216,9 @@ export default function PlatformDetailPage() {
         <div className="mt-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-400">
           <IC>redirectUrl</IC> must be an <IC>https://*.vyntrise.com</IC> subdomain — the login
           page rejects any other host (and any non-<IC>https:</IC> scheme) before it will attach
-          a token and redirect there.
+          a token and redirect there. The one exception is <IC>localhost</IC> /{' '}
+          <IC>127.0.0.1</IC> for local development, which is allowed only when this auth server
+          was built with localhost redirects enabled.
         </div>
       </div>
 

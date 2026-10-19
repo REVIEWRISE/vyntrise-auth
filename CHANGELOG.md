@@ -4,6 +4,21 @@ All notable changes to the Vyntrise Auth project.
 
 ---
 
+## [1.4.2] - 2026-10-19
+
+### Features
+
+#### Localhost redirects for platform app development
+
+The login page now accepts a `redirectUrl` on `localhost` or `127.0.0.1` (http or https, any
+port), so a platform app running locally can complete SSO. Allowed automatically in a dev build
+of the auth frontend; a production build allows it only when built with
+`NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT=true`, which CI sets from the repository variable
+`ALLOW_LOCALHOST_REDIRECT`. Unset means off, and every other host still has to be
+`https://*.vyntrise.com`.
+
+---
+
 ## [1.4.1] - 2026-10-19
 
 ### Fixes
