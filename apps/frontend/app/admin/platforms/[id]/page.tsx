@@ -352,12 +352,18 @@ export default function PlatformDetailPage() {
   },
 );
 
-// 201 { message, token, registerLink }
-// 409 an invitation for this address is already live
+// 201 { message, granted: false, token, registerLink }  new address, invitation sent
+// 201 { message, granted: true, token: null, registerLink: null }  existing account, added now
+// 409 an invitation is already live, or the user already has access
 // 401 key is unknown, revoked, or issued for a different platform`} />
         <p className="text-sm text-zinc-400 mt-1">
+          If the address already has a Vyntrise account, no invitation is created: the user is
+          added to the platform immediately and emailed that they can sign in, so{' '}
+          <IC>registerLink</IC> is <IC>null</IC>. Branch on <IC>granted</IC>, not on the link.
+        </p>
+        <p className="text-sm text-zinc-400 mt-1">
           Treat <IC>409</IC> as success, not failure. It means the person already has a live
-          invitation, which is exactly the state you wanted — retrying or surfacing an error here
+          invitation or is already a member, which is exactly the state you wanted — retrying or surfacing an error here
           just makes a re-run of your own onboarding look broken. A live invite is never silently
           replaced, because that would invalidate the link already sitting in their inbox; wait
           for it to expire, or revoke it from the Invites page to issue a new one.

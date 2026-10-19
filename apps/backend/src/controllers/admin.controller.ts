@@ -278,8 +278,19 @@ export const createInvite = async (req: Request, res: Response) => {
       return res.status(result.status).json({ message: result.message });
     }
 
+    // An existing account is granted access immediately, so there is no link to hand back.
+    if (result.granted) {
+      return res.status(201).json({
+        message: 'User already has an account and was added to the platform',
+        granted: true,
+        token: null,
+        registerLink: null,
+      });
+    }
+
     res.status(201).json({
       message: 'Invitation created',
+      granted: false,
       token: result.token,
       registerLink: result.registerLink,
     });

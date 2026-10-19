@@ -23,6 +23,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   INVITE_CREATED: Mail,
   INVITE_REVOKED: Mail,
   USER_JOINED_PLATFORM: UserPlus,
+  USER_ADDED_TO_PLATFORM: UserPlus,
   USER_SELF_REGISTERED: UserPlus,
   USER_ROLE_CHANGED: Shield,
   USER_REMOVED_FROM_PLATFORM: UserMinus,
@@ -47,6 +48,10 @@ function describeActivity(log: ActivityLog): string {
       return `${actor} removed ${meta.email ?? 'a user'} from the platform`;
     case 'USER_JOINED_PLATFORM':
       return `${meta.email ?? actor} joined the platform`;
+    case 'USER_ADDED_TO_PLATFORM':
+      return meta.origin === 'api'
+        ? `${meta.email ?? 'A user'} was added via the invite API`
+        : `${actor} added ${meta.email ?? 'a user'} as ${meta.role ?? 'USER'}`;
     case 'USER_SELF_REGISTERED':
       return `${meta.email ?? actor} signed up via self-registration`;
     case 'PLATFORM_SETTINGS_CHANGED':

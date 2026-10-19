@@ -4,6 +4,30 @@ All notable changes to the Vyntrise Auth project.
 
 ---
 
+## [1.4.1] - 2026-10-19
+
+### Fixes
+
+#### Existing accounts added to a platform could not sign in
+
+Adding an address that already had a Vyntrise account only created an invitation. Platform access
+was granted when the link was redeemed, so until then the user could authenticate but every
+sign-in to that platform failed with `403 You do not have access to this platform.` The invite
+form also told them to "Create Password" and silently ignored what they typed.
+
+- **Existing accounts are now added immediately**, from both the admin form and the invite-key
+  API, and get an "added to <platform>" email with a sign-in link instead of an invitation
+- **Response gains `granted`** — `true` with `token`/`registerLink` set to `null` when an
+  existing account was added, `false` for a normal invitation. `409` now also covers a user who
+  is already a member
+- **New audit action `USER_ADDED_TO_PLATFORM`**, with `origin` (`admin` or `api`), shown in the
+  dashboard activity feed
+- **Data migration `20261019120000_grant_pending_invites_to_existing_users`** converts live
+  invitations for existing accounts into memberships at their invited role, so users added
+  before this fix get in without being re-added. It writes no audit rows and sends no email
+
+---
+
 ## [1.4.0] - 2026-09-03
 
 ### Features

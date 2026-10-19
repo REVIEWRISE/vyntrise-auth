@@ -39,6 +39,9 @@ export default function AdminInvites() {
   const [platformId, setPlatformId] = useState(currentPlatformId);
   const [creating, setCreating] = useState(false);
   const [newLink, setNewLink] = useState('');
+  // Set instead of newLink when the address already had an account: access was granted on the
+  // spot, so there is no link to share.
+  const [addedEmail, setAddedEmail] = useState('');
   const [copied, setCopied] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
@@ -62,6 +65,7 @@ export default function AdminInvites() {
     setCreating(true);
     setError('');
     setNewLink('');
+    setAddedEmail('');
 
     if (!platformId) {
       setError('Please select a platform');
@@ -78,7 +82,11 @@ export default function AdminInvites() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create invite');
 
-      setNewLink(data.registerLink);
+      if (data.granted) {
+        setAddedEmail(email);
+      } else {
+        setNewLink(data.registerLink);
+      }
       setEmail('');
       setRole('USER');
       fetchInvites(currentPlatformId);
@@ -122,6 +130,15 @@ export default function AdminInvites() {
       {error && (
         <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
           {error}
+        </div>
+      )}
+
+      {addedEmail && (
+        <div className="p-4 rounded-md bg-green-500/10 border border-green-500/20">
+          <p className="text-green-400 text-sm font-medium">
+            {addedEmail} already has a Vyntrise account and was added to the platform. They can
+            sign in now with their existing password.
+          </p>
         </div>
       )}
 

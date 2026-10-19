@@ -40,6 +40,11 @@ export const emailService = {
     return emailProvider.send({ to, ...templates.inviteEmail({ registerLink, platformName, role }) });
   },
 
+  sendAddedToPlatformEmail(to: string, platformName: string, platformId: string, role: string): Promise<void> {
+    const loginLink = `${emailConfig.appUrl}/login?platformId=${encodeURIComponent(platformId)}`;
+    return emailProvider.send({ to, ...templates.addedToPlatformEmail({ platformName, loginLink, role }) });
+  },
+
   sendVerificationEmail(to: string, verifyLink: string, platformName: string): Promise<void> {
     return emailProvider.send({ to, ...templates.verifyEmailEmail({ verifyLink, platformName }) });
   },

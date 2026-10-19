@@ -70,6 +70,25 @@ export function inviteEmail(params: {
   });
 }
 
+export function addedToPlatformEmail(params: {
+  platformName: string;
+  loginLink: string;
+  role: string;
+}): RenderedEmail {
+  const asAdmin = params.role === 'ADMIN';
+  return render({
+    subject: `You now have access to ${params.platformName}`,
+    title: `You've been added to ${params.platformName}`,
+    preheader: 'Sign in with your existing Vyntrise account.',
+    paragraphs: [
+      `An administrator added you to *${params.platformName}*${asAdmin ? ' as an *administrator*' : ''}.`,
+      'There is nothing to set up — sign in with the Vyntrise email and password you already use.',
+    ],
+    action: { label: 'Sign in', url: params.loginLink },
+    footnote: CONTACT_ADMIN,
+  });
+}
+
 export function welcomeEmail(params: { platformName: string; loginLink: string }): RenderedEmail {
   return render({
     subject: `Welcome to ${params.platformName}`,

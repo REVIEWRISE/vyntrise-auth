@@ -222,6 +222,13 @@ human form, since `ADMIN` grants access to this service's own admin panel. Body 
 the invitation produced is the same record, with the same 7-day expiry and the same Revoke
 button. Rate limited per key: 20/min, 200/hour, and 5/hour to any one address.
 
+**Existing accounts are added, not invited.** On both the admin form and this API, an address
+that already has a Vyntrise account gets platform access immediately and an "added to
+<platform>" email instead of an invitation link. The `201` response then carries
+`granted: true` with `token` and `registerLink` as `null`; a fresh invitation has
+`granted: false`. Re-adding an existing user who still has a pending invite converts it the same
+way. A user who is already a member gets `409`.
+
 ### Invite (`/api/invite`)
 
 | Method | Path | Auth | Description |
