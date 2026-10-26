@@ -1,297 +1,288 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Suspense, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { isPast } from 'date-fns';
+import { Check, Copy, Link2, Loader2, Mail, MailPlus, Shield, UserCheck, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAdminSession } from '../admin-session-context';
+import { useAdminMutation, useInvites, type Invite, type Role } from '@/lib/admin-api';
+import { apiJson, ApiError } from '@/lib/api';
+import { DataTable, ToolbarSearch, type ColumnDef } from '@/components/admin/data-table';
+import { ConfirmDialog, EmptyState, ErrorState, PageHeader, StatusPill } from '@/components/admin/primitives';
+import { RangeTabs } from '@/components/admin/charts';
+import { Avatar, RelativeTime, formatDateTime } from '@/components/admin/format';
+import { RequirePlatform } from '@/components/admin/require-platform';
 
-interface Invite {
-  id: string;
-  email: string;
-  isUsed: boolean;
-  expiresAt: string;
-  token: string;
-  platformId: string;
-  role: string;
-  platform: {
-    name: string;
-  };
+type InviteStatus = 'pending' | 'accepted' | 'expired';
+
+function statusOf(i: Invite): InviteStatus {
+  if (i.isUsed) return 'accepted';
+  return isPast(new Date(i.expiresAt)) ? 'expired' : 'pending';
 }
 
-import { apiFetch } from '@/lib/api';
-import { useAdminPlatform } from '../admin-platform-context';
+function InviteStatusPill({ status }: { status: InviteStatus }) {
+  if (status === 'accepted') return <StatusPill tone="good">Accepted</StatusPill>;
+  if (status === 'expired') return <StatusPill tone="neutral">Expired</StatusPill>;
+  return <StatusPill tone="brand">Pending</StatusPill>;
+}
 
-export default function AdminInvites() {
-  const { platformId: currentPlatformId, platforms } = useAdminPlatform();
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [error, setError] = useState('');
+type CreateResult = { granted: boolean; registerLink: string | null; message: string };
+
+function InviteDialog({ open, onOpenChange, platformId, platformName }: { open: boolean; onOpenChange: (o: boolean) => void; platformId: string; platformName: string }) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('USER');
-  // Invite target platform defaults to whatever's selected in the sidebar switcher, but stays
-  // independently overridable — an admin may want to invite someone to a different platform
-  // than the one they're currently viewing.
-  const [platformId, setPlatformId] = useState(currentPlatformId);
-  const [creating, setCreating] = useState(false);
-  const [newLink, setNewLink] = useState('');
-  // Set instead of newLink when the address already had an account: access was granted on the
-  // spot, so there is no link to share.
-  const [addedEmail, setAddedEmail] = useState('');
+  const [role, setRole] = useState<Role>('USER');
+  const [result, setResult] = useState<(CreateResult & { email: string }) | null>(null);
+  const [inlineError, setInlineError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  const fetchInvites = async (forPlatformId: string) => {
-    try {
-      const res = await apiFetch(`/api/admin/invites?platformId=${forPlatformId}`);
-      if (!res.ok) throw new Error('Failed to fetch invites');
-      const data = await res.json();
-      setInvites(data);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
+  const create = useAdminMutation(
+    (vars: { email: string; role: Role }) =>
+      apiJson<CreateResult>('/api/admin/invites', { method: 'POST', body: { ...vars, platformId } }),
+    { silent: true }
+  );
 
-  useEffect(() => {
-    if (currentPlatformId) fetchInvites(currentPlatformId);
-  }, [currentPlatformId]);
-
-  const handleCreateInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setError('');
-    setNewLink('');
-    setAddedEmail('');
-
-    if (!platformId) {
-      setError('Please select a platform');
-      setCreating(false);
-      return;
-    }
-
-    try {
-      const res = await apiFetch('/api/admin/invites', {
-        method: 'POST',
-        body: JSON.stringify({ email, role, platformId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to create invite');
-
-      if (data.granted) {
-        setAddedEmail(email);
-      } else {
-        setNewLink(data.registerLink);
-      }
+  const close = (o: boolean) => {
+    onOpenChange(o);
+    if (!o) {
       setEmail('');
       setRole('USER');
-      fetchInvites(currentPlatformId);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setCreating(false);
+      setResult(null);
+      setInlineError('');
     }
   };
 
-  const revokeInvite = async (invite: Invite) => {
-    setRevokingId(invite.id);
-    setError('');
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInlineError('');
     try {
-      const res = await apiFetch(`/api/admin/invites/${invite.id}?platformId=${currentPlatformId}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to revoke invitation');
-      fetchInvites(currentPlatformId);
+      const r = await create.mutateAsync({ email: email.trim(), role });
+      setResult({ ...r, email: email.trim() });
+      toast.success(r.granted ? `${email.trim()} now has access` : 'Invitation created');
     } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setRevokingId(null);
+      // A 409 is the expected answer for "already invited / already a member": say so inline
+      // rather than as an error toast.
+      if (err instanceof ApiError && err.status === 409) setInlineError(err.message);
     }
-  };
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(newLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-50">Invitations</h1>
-        <p className="text-zinc-400 mt-1">Manage platform invitations and generate new ones.</p>
-      </div>
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent>
+        {result ? (
+          <>
+            <DialogHeader>
+              <div className="mb-2 grid h-10 w-10 place-items-center rounded-full bg-success/10 text-success">
+                {result.granted ? <UserCheck className="h-5 w-5" /> : <Check className="h-5 w-5" />}
+              </div>
+              <DialogTitle>{result.granted ? 'Access granted' : 'Invitation created'}</DialogTitle>
+              <DialogDescription>
+                {result.granted
+                  ? `${result.email} already had an account, so they were added to ${platformName} straight away and notified by email.`
+                  : `We emailed ${result.email} a link to join ${platformName}. You can also share it directly — it expires in 7 days.`}
+              </DialogDescription>
+            </DialogHeader>
+            {result.registerLink && (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2">
+                <Link2 className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                <code className="min-w-0 flex-1 truncate text-xs">{result.registerLink}</code>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(result.registerLink!);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check /> : <Copy />} {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setResult(null); setEmail(''); }}>Invite another</Button>
+              <Button onClick={() => close(false)}>Done</Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <form onSubmit={submit} className="grid gap-4">
+            <DialogHeader>
+              <DialogTitle>Invite to {platformName}</DialogTitle>
+              <DialogDescription>Existing accounts get access immediately; new addresses receive a sign-up link.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2">
+              <Label htmlFor="invite-email">Email address</Label>
+              <Input id="invite-email" type="email" required autoFocus value={email} onChange={(e) => { setEmail(e.target.value); setInlineError(''); }} placeholder="name@company.com" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Role</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['USER', 'ADMIN'] as Role[]).map((r) => (
+                  <button
+                    type="button"
+                    key={r}
+                    onClick={() => setRole(r)}
+                    className={`rounded-lg border p-3 text-left transition-colors ${role === r ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-accent'}`}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {r === 'ADMIN' ? <Shield className="h-4 w-4 text-primary" /> : <Mail className="h-4 w-4 text-muted-foreground" />}
+                      {r === 'ADMIN' ? 'Admin' : 'Member'}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{r === 'ADMIN' ? 'Manages members, invites and settings' : 'Can sign in to the platform'}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {inlineError && (
+              <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">{inlineError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => close(false)}>Cancel</Button>
+              <Button type="submit" disabled={create.isPending}>
+                {create.isPending ? <Loader2 className="animate-spin" /> : <MailPlus />}
+                Send invite
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      {error && (
-        <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
+function InvitesView({ platformId }: { platformId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const { platform } = useAdminSession();
+  const { data, isLoading, isError, error, refetch } = useInvites(platformId);
+  const [tab, setTab] = useState<InviteStatus | 'all'>('pending');
+  const [search, setSearch] = useState('');
+  const [revoking, setRevoking] = useState<Invite | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // ?new=1 (from the command palette) opens the dialog on arrival.
+  const open = dialogOpen || params.get('new') === '1';
+  const setOpen = (o: boolean) => {
+    setDialogOpen(o);
+    if (!o && params.get('new')) router.replace(pathname, { scroll: false });
+  };
+
+  const revoke = useAdminMutation(
+    (invite: Invite) => apiJson(`/api/admin/invites/${invite.id}?platformId=${platformId}`, { method: 'DELETE' }),
+    { success: (_r, v) => `Invitation for ${v.email} revoked` }
+  );
+
+  const counts = useMemo(() => {
+    const c = { pending: 0, accepted: 0, expired: 0, all: data?.length ?? 0 };
+    for (const i of data ?? []) c[statusOf(i)]++;
+    return c;
+  }, [data]);
+
+  const rows = useMemo(
+    () =>
+      (data ?? []).filter(
+        (i) => (tab === 'all' || statusOf(i) === tab) && (!search || i.email.toLowerCase().includes(search.toLowerCase()))
+      ),
+    [data, tab, search]
+  );
+
+  const columns: ColumnDef<Invite, unknown>[] = [
+    {
+      accessorKey: 'email',
+      header: 'Invitee',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <Avatar email={row.original.email} />
+          <span className="font-medium">{row.original.email}</span>
         </div>
-      )}
-
-      {addedEmail && (
-        <div className="p-4 rounded-md bg-green-500/10 border border-green-500/20">
-          <p className="text-green-400 text-sm font-medium">
-            {addedEmail} already has a Vyntrise account and was added to the platform. They can
-            sign in now with their existing password.
-          </p>
-        </div>
-      )}
-
-      {newLink && (
-        <div className="p-4 rounded-md bg-green-500/10 border border-green-500/20 space-y-2">
-          <p className="text-green-400 text-sm font-medium">Invitation created! Share this link:</p>
-          <div className="flex items-center gap-2">
-            <Input
-              readOnly
-              value={newLink}
-              className="bg-zinc-950/50 border-zinc-700 text-zinc-200 text-xs font-mono"
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCopy}
-              className="shrink-0 text-zinc-400 hover:text-zinc-100"
-            >
-              {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+      ),
+    },
+    {
+      accessorKey: 'role',
+      header: 'Role',
+      cell: ({ row }) => (row.original.role === 'ADMIN' ? <StatusPill tone="brand">Admin</StatusPill> : <span className="text-muted-foreground">Member</span>),
+    },
+    { id: 'status', header: 'Status', accessorFn: statusOf, cell: ({ row }) => <InviteStatusPill status={statusOf(row.original)} /> },
+    { accessorKey: 'createdAt', header: 'Sent', cell: ({ row }) => <RelativeTime value={row.original.createdAt} className="text-muted-foreground" /> },
+    {
+      accessorKey: 'expiresAt',
+      header: 'Expires',
+      cell: ({ row }) => <span className="text-muted-foreground" title={formatDateTime(row.original.expiresAt)}><RelativeTime value={row.original.expiresAt} /></span>,
+    },
+    {
+      id: 'actions',
+      header: '',
+      enableSorting: false,
+      cell: ({ row }) =>
+        !row.original.isUsed && (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => setRevoking(row.original)}>
+              <X /> Revoke
             </Button>
           </div>
-        </div>
+        ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Invitations"
+        description={`People invited to ${platform?.name ?? 'this platform'}. Pending invites expire after 7 days.`}
+        actions={<Button onClick={() => setOpen(true)}><MailPlus /> Invite user</Button>}
+      />
+
+      <RangeTabs
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'pending', label: `Pending · ${counts.pending}` },
+          { value: 'accepted', label: `Accepted · ${counts.accepted}` },
+          { value: 'expired', label: `Expired · ${counts.expired}` },
+          { value: 'all', label: `All · ${counts.all}` },
+        ]}
+      />
+
+      {isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={rows}
+          loading={isLoading}
+          toolbar={<ToolbarSearch value={search} onChange={setSearch} placeholder="Search invitees…" />}
+          empty={
+            <EmptyState
+              icon={Mail}
+              title={search ? 'No matching invitations' : tab === 'pending' ? 'No pending invitations' : 'Nothing here'}
+              description={tab === 'pending' && !search ? 'Invite teammates and they will show up here until they accept.' : undefined}
+              action={tab === 'pending' && !search ? <Button variant="outline" onClick={() => setOpen(true)}><MailPlus /> Invite user</Button> : undefined}
+            />
+          }
+        />
       )}
 
-      <div className="grid gap-6 md:grid-cols-[1fr_300px]">
-        {/* Invites table */}
-        <Card className="bg-zinc-950/50 border-zinc-800 order-2 md:order-1">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-zinc-400">Email</TableHead>
-                <TableHead className="text-zinc-400">Platform</TableHead>
-                <TableHead className="text-zinc-400">Role</TableHead>
-                <TableHead className="text-zinc-400">Status</TableHead>
-                <TableHead className="text-zinc-400">Expires</TableHead>
-                <TableHead className="text-right text-zinc-400">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invites.map((invite) => (
-                <TableRow key={invite.id} className="border-zinc-800 hover:bg-zinc-900/50">
-                  <TableCell className="font-medium text-zinc-100">{invite.email}</TableCell>
-                  <TableCell className="text-zinc-300">{invite.platform.name}</TableCell>
-                  <TableCell>
-                    <Badge 
-                      variant="outline" 
-                      className={invite.role === 'ADMIN' 
-                        ? 'border-purple-500/50 text-purple-400 bg-purple-500/10' 
-                        : 'border-zinc-700 text-zinc-400 bg-zinc-800/50'
-                      }
-                    >
-                      {invite.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {invite.isUsed ? (
-                      <Badge variant="secondary" className="bg-zinc-800 text-zinc-400">Used</Badge>
-                    ) : new Date(invite.expiresAt) < new Date() ? (
-                      <Badge className="bg-red-500/20 text-red-400 border-0">Expired</Badge>
-                    ) : (
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-0">Pending</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-zinc-400">
-                    {new Date(invite.expiresAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {invite.isUsed ? (
-                      <span className="text-xs text-zinc-600">—</span>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => revokeInvite(invite)}
-                        disabled={revokingId === invite.id}
-                        className="h-7 text-zinc-500 hover:text-red-400"
-                      >
-                        {revokingId === invite.id ? 'Revoking...' : 'Revoke'}
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {invites.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-zinc-500">
-                    No invitations found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-
-        {/* Create invite form */}
-        <Card className="bg-zinc-950/50 border-zinc-800 h-fit order-1 md:order-2">
-          <CardHeader>
-            <CardTitle className="text-lg text-zinc-50">Create Invite</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateInvite} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="inv-email" className="text-zinc-300">Email Address</Label>
-                <Input
-                  id="inv-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="user@example.com"
-                  className="bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-600"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="inv-platform" className="text-zinc-300">Platform</Label>
-                <select
-                  id="inv-platform"
-                  value={platformId}
-                  onChange={(e) => setPlatformId(e.target.value)}
-                  required
-                  className="flex h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                >
-                  <option value="">Select a platform</option>
-                  {platforms.map((platform) => (
-                    <option key={platform.id} value={platform.id}>
-                      {platform.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="inv-role" className="text-zinc-300">Role</Label>
-                <select
-                  id="inv-role"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                >
-                  <option value="USER">User</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-              </div>
-              <Button
-                type="submit"
-                disabled={creating}
-                className="w-full bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold"
-              >
-                {creating ? 'Generating...' : 'Generate Link'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+      <InviteDialog open={open} onOpenChange={setOpen} platformId={platformId} platformName={platform?.name ?? 'this platform'} />
+      <ConfirmDialog
+        open={!!revoking}
+        onOpenChange={(o) => !o && setRevoking(null)}
+        title="Revoke invitation?"
+        description={revoking && `The link sent to ${revoking.email} stops working immediately. You can invite them again later.`}
+        confirmLabel="Revoke"
+        onConfirm={() => revoking && revoke.mutateAsync(revoking)}
+      />
     </div>
+  );
+}
+
+export default function InvitesPage() {
+  return (
+    <Suspense>
+      <RequirePlatform what="Invitations">{(platformId) => <InvitesView key={platformId} platformId={platformId} />}</RequirePlatform>
+    </Suspense>
   );
 }

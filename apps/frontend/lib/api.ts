@@ -47,6 +47,47 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return res;
 }
 
+/** A non-2xx API response, carrying the backend's message and machine-readable code. */
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public code?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * apiFetch plus JSON in and out: throws ApiError on a non-2xx response so React Query and
+ * mutation handlers can treat failures uniformly.
+ */
+export async function apiJson<T>(input: string, init: Omit<RequestInit, 'body'> & { body?: unknown } = {}): Promise<T> {
+  const { body, ...rest } = init;
+  const res = await apiFetch(input, {
+    ...rest,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(res.status, data.message || `Request failed (${res.status})`, data.code);
+  }
+  return data as T;
+}
+
+/** Builds a query string, dropping empty values. Arrays repeat the key. */
+export function qs(params: Record<string, string | number | boolean | string[] | null | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) value.forEach((v) => search.append(key, v));
+    else search.set(key, String(value));
+  }
+  const s = search.toString();
+  return s ? `?${s}` : '';
+}
+
 async function tryRefresh(): Promise<boolean> {
   try {
     const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' });

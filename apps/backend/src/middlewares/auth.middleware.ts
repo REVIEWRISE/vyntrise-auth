@@ -35,8 +35,13 @@ export const authenticateJWT = async (req: AuthRequest, res: Response, next: Nex
       // lookup, independent of whether a refreshToken cookie happens to be present. Bearer-only
       // callers (e.g. external SSO integrations) never carry that cookie, so the old check —
       // which only ran `if (refreshToken)` — silently let revoked sessions keep working for them.
-      const session = await prisma.session.findUnique({ where: { id: decoded.sessionId } });
-      if (!session || session.userId !== decoded.id) {
+      // The user's disabled flag rides along on the same lookup. Disabling deletes sessions, so
+      // this is belt and braces for a request racing the disable.
+      const session = await prisma.session.findUnique({
+        where: { id: decoded.sessionId },
+        include: { user: { select: { disabledAt: true } } },
+      });
+      if (!session || session.userId !== decoded.id || session.user.disabledAt) {
         const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
         res.clearCookie('refreshToken', { domain: cookieDomain });
         res.clearCookie('vyntrise_session', { domain: cookieDomain });

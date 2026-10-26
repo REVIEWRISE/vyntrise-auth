@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import prisma from '../db/prisma';
-import { logActivity } from '../services/audit.service';
+import { logActivity, clientIp } from '../services/audit.service';
 import { BCRYPT_ROUNDS } from '../config/env';
 import { emailService, notify } from '../services/email.service';
 import { signAccessToken, signRefreshToken, verifyToken } from '../services/signing-key.service';
@@ -30,6 +30,27 @@ const generateTokens = async (user: { id: string, email: string }, sessionId: st
   return { accessToken, refreshToken };
 };
 
+// Platform ids seen on the login path, so a burst of logins for the same platform costs one
+// lookup rather than one per request. Only positive results are cached: a platform created a
+// moment ago must not be stuck as "unknown".
+const KNOWN_PLATFORM_TTL_MS = 5 * 60 * 1000;
+const knownPlatforms = new Map<string, number>();
+
+async function knownPlatformId(platformId: unknown): Promise<string | null> {
+  if (typeof platformId !== 'string' || !platformId) return null;
+
+  const cachedUntil = knownPlatforms.get(platformId);
+  if (cachedUntil && cachedUntil > Date.now()) return platformId;
+
+  const platform = await prisma.platform
+    .findUnique({ where: { id: platformId }, select: { id: true } })
+    .catch(() => null);
+  if (!platform) return null;
+
+  knownPlatforms.set(platformId, Date.now() + KNOWN_PLATFORM_TTL_MS);
+  return platformId;
+}
+
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password, platformId } = req.body;
@@ -42,14 +63,41 @@ export const login = async (req: Request, res: Response) => {
     // Always run a comparison, even with no user, so both paths take the same time.
     const isPasswordValid = await bcrypt.compare(password, user?.password ?? DUMMY_HASH);
 
+    // The body's platformId is caller-supplied; only attribute audit rows to it once it is
+    // known to exist; otherwise the foreign key would reject the row and logActivity would
+    // swallow it, losing the very failure we wanted to record.
+    const auditPlatformId = await knownPlatformId(platformId);
+
     if (!user || !isPasswordValid) {
       logActivity({
         action: 'LOGIN_FAILED',
+        platformId: auditPlatformId,
         actorId: user?.id,
         targetType: 'user',
+        targetId: user?.id,
         metadata: { email: String(email ?? ''), reason: user ? 'bad_password' : 'no_such_user' },
+        req,
       });
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Like the verification gate below, only revealed once the password is correct, so a
+    // disabled account cannot be told apart from a wrong password by a guesser.
+    if (user.disabledAt) {
+      logActivity({
+        action: 'LOGIN_BLOCKED_DISABLED',
+        platformId: auditPlatformId,
+        actorId: user.id,
+        targetType: 'user',
+        targetId: user.id,
+        metadata: { email: user.email },
+        req,
+      });
+
+      return res.status(403).json({
+        message: 'This account has been disabled. Contact your administrator.',
+        code: 'ACCOUNT_DISABLED',
+      });
     }
 
     // Checked only once the password is known to be correct, so an unauthenticated caller can
@@ -57,10 +105,12 @@ export const login = async (req: Request, res: Response) => {
     if (!user.emailVerified) {
       logActivity({
         action: 'LOGIN_BLOCKED_UNVERIFIED',
+        platformId: auditPlatformId,
         actorId: user.id,
         targetType: 'user',
         targetId: user.id,
         metadata: { email: user.email },
+        req,
       });
 
       return res.status(403).json({
@@ -73,6 +123,15 @@ export const login = async (req: Request, res: Response) => {
     if (platformId) {
       const hasAccess = user.platforms.some((p: any) => p.platformId === platformId);
       if (!hasAccess) {
+        logActivity({
+          action: 'LOGIN_DENIED_NO_ACCESS',
+          platformId: auditPlatformId,
+          actorId: user.id,
+          targetType: 'user',
+          targetId: user.id,
+          metadata: { email: user.email },
+          req,
+        });
         return res.status(403).json({ message: 'You do not have access to this platform.' });
       }
     }
@@ -114,7 +173,23 @@ export const login = async (req: Request, res: Response) => {
         userId: user.id,
         hashedToken,
         userAgent: req.headers['user-agent'] ?? null,
+        ipAddress: clientIp(req),
       }
+    });
+
+    // Not awaited: a stale "last login" is harmless, a slower login is not.
+    prisma.user
+      .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+      .catch((error) => console.error('lastLoginAt update failed:', error));
+
+    logActivity({
+      action: 'LOGIN_SUCCEEDED',
+      platformId: auditPlatformId,
+      actorId: user.id,
+      targetType: 'session',
+      targetId: sessionId,
+      metadata: { email: user.email },
+      req,
     });
 
     res.json({ accessToken, user: { id: user.id, email: user.email } });
@@ -168,6 +243,7 @@ export const register = async (req: Request, res: Response) => {
       targetType: 'user',
       targetId: user.id,
       metadata: { email },
+      req,
     });
 
     // The row exists but cannot be signed into until the address is confirmed — see the
@@ -289,14 +365,25 @@ export const refresh = async (req: Request, res: Response) => {
     return res.status(403).json({ message: 'User not found' });
   }
 
-  const { accessToken, refreshToken: newRefreshToken } = await generateTokens({ id: user.id, email: user.email }, matchedSession.id);
   const cookieDomain = req.hostname.includes('vyntrise.com') ? '.vyntrise.com' : undefined;
+
+  // Disabling deletes sessions, so this is normally unreachable — it closes the window where a
+  // refresh races the disable. The wording contains "revoked" so the frontend's apiFetch treats
+  // it as a forced sign-out.
+  if (user.disabledAt) {
+    await prisma.session.delete({ where: { id: matchedSession.id } }).catch(() => {});
+    res.clearCookie('refreshToken', { domain: cookieDomain });
+    res.clearCookie('vyntrise_session', { domain: cookieDomain });
+    return res.status(403).json({ message: 'Session revoked. This account has been disabled.', code: 'ACCOUNT_DISABLED' });
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } = await generateTokens({ id: user.id, email: user.email }, matchedSession.id);
 
   // Rotate the stored hashed token and update lastUsedAt
   const newHashedToken = await bcrypt.hash(newRefreshToken, 10);
   await prisma.session.update({
     where: { id: matchedSession.id },
-    data: { hashedToken: newHashedToken, lastUsedAt: new Date() }
+    data: { hashedToken: newHashedToken, lastUsedAt: new Date(), ipAddress: clientIp(req) }
   });
 
   res.cookie('refreshToken', newRefreshToken, {

@@ -87,6 +87,7 @@ export const registerViaInvite = async (req: Request, res: Response) => {
       targetType: 'user',
       targetId: user.id,
       metadata: { email: user.email, role: invitation.role || 'USER' },
+      req,
     });
 
     res.status(201).json({ 

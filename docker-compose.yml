@@ -33,6 +33,11 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3021
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://auth.vyntrise.com}
+      # Login redirects are now decided by the backend (GET /api/auth/redirect-check).
+      # 'true' lets platforms redirect to http://localhost during development.
+      ALLOW_LOCALHOST_REDIRECT: ${ALLOW_LOCALHOST_REDIRECT:-false}
+      # 'false' stops the *.vyntrise.com fallback for platforms with no redirect URIs configured.
+      LEGACY_REDIRECT_FALLBACK: ${LEGACY_REDIRECT_FALLBACK:-true}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
       EMAIL_FROM: ${EMAIL_FROM}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Vyntrise}

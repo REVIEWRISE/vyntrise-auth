@@ -13,6 +13,15 @@ model User {
   password        String
   emailVerified   Boolean   @default(false)
   emailVerifiedAt DateTime?
+  // Global operator across every platform. Granted only by the super-admin CLI script, never
+  // through the API, so a compromised admin session cannot escalate itself.
+  isSuperAdmin    Boolean   @default(false)
+  // A disabled account cannot sign in or refresh. Disabling also deletes its sessions, so live
+  // access tokens stop working on the next request (authenticateJWT looks the session up).
+  disabledAt      DateTime?
+  disabledReason  String?
+  disabledById    String?
+  lastLoginAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -22,6 +31,8 @@ model User {
   sessions                Session[]
   auditLogs               AuditLog[]
   inviteKeysCreated       PlatformInviteKey[]
+
+  @@index([createdAt])
 }
 
 model Platform {
@@ -29,6 +40,12 @@ model Platform {
   name                  String   @unique
   description           String?
   allowSelfRegistration Boolean  @default(false)
+  // Where the login page may send a signed-in user back to, as absolute URL prefixes (origin
+  // plus path). Empty means the legacy *.vyntrise.com / localhost rule still applies, gated by
+  // LEGACY_REDIRECT_FALLBACK, so existing integrations keep working until they are configured.
+  redirectUris          String[] @default([])
+  // Exact origins merged into the backend's CORS allow-list alongside ALLOWED_ORIGINS.
+  allowedOrigins        String[] @default([])
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -82,10 +99,13 @@ model Session {
   userId      String
   hashedToken String   @unique
   userAgent   String?
+  ipAddress   String?
   createdAt   DateTime @default(now())
   lastUsedAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model AuditLog {
@@ -96,12 +116,18 @@ model AuditLog {
   targetType String?
   targetId   String?
   metadata   Json?
+  ipAddress  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
 
   platform Platform? @relation(fields: [platformId], references: [id], onDelete: SetNull)
   actor    User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([platformId, createdAt])
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
 }
 
 model EmailVerificationToken {
