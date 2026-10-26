@@ -1,262 +1,182 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Suspense, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ArrowUpRight, Globe, Link2, Loader2, Lock, Plus, Search, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import { Loader2, Copy, Check, ChevronRight } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAdminSession } from '../admin-session-context';
+import { useAdminMutation, usePlatforms, type PlatformSummary } from '@/lib/admin-api';
+import { apiJson } from '@/lib/api';
+import { EmptyState, ErrorState, PageHeader, StatusPill } from '@/components/admin/primitives';
+import { formatDate } from '@/components/admin/format';
 
-import { apiFetch } from '@/lib/api';
-
-interface Platform {
-  id: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-  userCount: number;
-}
-
-export default function AdminPlatforms() {
+function CreatePlatformDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
-  const [platforms, setPlatforms] = useState<Platform[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [createSuccess, setCreateSuccess] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selfReg, setSelfReg] = useState(false);
+  const create = useAdminMutation(
+    () => apiJson<{ id: string; name: string }>('/api/admin/platforms', { method: 'POST', body: { name, description, allowSelfRegistration: selfReg } }),
+    { success: (p) => `Platform “${p.name}” created` }
+  );
 
-  const copyId = async (id: string) => {
-    await navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form
+          className="grid gap-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              const p = await create.mutateAsync();
+              onOpenChange(false);
+              setName('');
+              setDescription('');
+              setSelfReg(false);
+              router.push(`/admin/platforms/${p.id}`);
+            } catch {
+              // Toasted.
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Create platform</DialogTitle>
+            <DialogDescription>A platform is one app that signs users in through Vyntrise. You become its first admin.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="p-name">Name</Label>
+            <Input id="p-name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Review Rise SMS" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="p-desc">Description <span className="text-muted-foreground">(optional)</span></Label>
+            <Textarea id="p-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this app for?" />
+          </div>
+          <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <span>
+              <span className="block text-sm font-medium">Allow self-registration</span>
+              <span className="block text-xs text-muted-foreground">Anyone with the sign-up link can create an account.</span>
+            </span>
+            <Switch checked={selfReg} onCheckedChange={setSelfReg} />
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
+              {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />} Create platform
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-  const fetchPlatforms = async () => {
-    try {
-      const res = await apiFetch('/api/admin/platforms');
-      if (!res.ok) throw new Error('Failed to fetch platforms');
-      setPlatforms(await res.json());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
+function PlatformCard({ p, current }: { p: PlatformSummary; current: boolean }) {
+  return (
+    <Link
+      href={`/admin/platforms/${p.id}`}
+      className="glass group relative flex flex-col overflow-hidden rounded-xl p-5 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_12px_40px_-16px_hsl(var(--primary)/0.45)]"
+    >
+      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/10 opacity-0 blur-2xl transition-opacity group-hover:opacity-100" aria-hidden />
+      <div className="flex items-start justify-between gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border bg-muted text-base font-semibold uppercase">{p.name[0]}</div>
+        <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+      </div>
+      <div className="mt-4 flex items-center gap-2">
+        <h3 className="truncate font-semibold">{p.name}</h3>
+        {current && <StatusPill tone="brand">Selected</StatusPill>}
+      </div>
+      <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">{p.description || 'No description'}</p>
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-4 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{p.userCount} members</span>
+        <span className="inline-flex items-center gap-1.5">
+          {p.allowSelfRegistration ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {p.allowSelfRegistration ? 'Open sign-up' : 'Invite only'}
+        </span>
+        <span className="inline-flex items-center gap-1.5" title={p.redirectUriCount ? undefined : 'Using the legacy *.vyntrise.com redirect rule'}>
+          <Link2 className="h-3.5 w-3.5" />
+          {p.redirectUriCount ? `${p.redirectUriCount} redirect URI${p.redirectUriCount === 1 ? '' : 's'}` : <span className="text-warning">No redirect URIs</span>}
+        </span>
+        <span className="ml-auto">{formatDate(p.createdAt)}</span>
+      </div>
+    </Link>
+  );
+}
 
-  useEffect(() => { fetchPlatforms(); }, []);
+function PlatformsView() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const { isSuperAdmin, scope } = useAdminSession();
+  const { data, isLoading, isError, error, refetch } = usePlatforms();
+  const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const open = createOpen || (isSuperAdmin && params.get('new') === '1');
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError('');
-    setCreateSuccess('');
-
-    try {
-      const res = await apiFetch('/api/admin/platforms', {
-        method: 'POST',
-        body: JSON.stringify({ name, description, allowSelfRegistration }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to create platform');
-
-      setCreateSuccess(`Platform "${data.name}" created successfully`);
-      setName('');
-      setDescription('');
-      setAllowSelfRegistration(false);
-      fetchPlatforms();
-    } catch (err) {
-      setCreateError((err as Error).message);
-    } finally {
-      setCreating(false);
-    }
-  };
+  const rows = (data ?? []).filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-50">Platforms</h1>
-        <p className="text-zinc-400 mt-1">Manage platforms and integrate them with Vyntrise Auth.</p>
-      </div>
+      <PageHeader
+        title="Platforms"
+        description={isSuperAdmin ? 'Every app that signs users in through Vyntrise.' : 'Apps you administer.'}
+        actions={
+          <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter platforms…" className="h-9 w-56 pl-8" />
+            </div>
+            {isSuperAdmin && (
+              <Button onClick={() => setCreateOpen(true)}><Plus /> New platform</Button>
+            )}
+          </>
+        }
+      />
 
-      {error && (
-        <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+      {isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-52 rounded-xl" />)}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="glass rounded-xl">
+          <EmptyState
+            icon={Globe}
+            title={search ? 'No platforms match' : 'No platforms yet'}
+            description={search ? undefined : isSuperAdmin ? 'Create the first app that will sign users in through Vyntrise.' : 'Ask a super-admin to create one.'}
+            action={!search && isSuperAdmin ? <Button onClick={() => setCreateOpen(true)}><Plus /> New platform</Button> : undefined}
+          />
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((p) => <PlatformCard key={p.id} p={p} current={p.id === scope} />)}
+        </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-[1fr_320px]">
-        {/* Left column — table + per-platform integration guides */}
-        <div className="space-y-3 order-2 md:order-1">
-          <Card className="bg-zinc-950/50 border-zinc-800">
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-zinc-800 hover:bg-transparent">
-                    <TableHead className="text-zinc-400">Name</TableHead>
-                    <TableHead className="text-zinc-400">Platform ID</TableHead>
-                    <TableHead className="text-zinc-400">Description</TableHead>
-                    <TableHead className="text-zinc-400">Members</TableHead>
-                    <TableHead className="text-right text-zinc-400">Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {platforms.map((p) => (
-                    <TableRow
-                      key={p.id}
-                      className="border-zinc-800 hover:bg-zinc-900/50 cursor-pointer group"
-                      onClick={() => router.push(`/admin/platforms/${p.id}`)}
-                    >
-                      <TableCell className="font-medium text-zinc-100 group-hover:text-white">
-                        <div className="flex items-center gap-2">
-                          {p.name}
-                          <ChevronRight className="h-3.5 w-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <code className="text-xs font-mono text-zinc-400 bg-zinc-800/50 px-1.5 py-0.5 rounded">
-                            {p.id.substring(0, 8)}...
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-200"
-                            onClick={(e) => { e.stopPropagation(); copyId(p.id); }}
-                            title="Copy full Platform ID"
-                          >
-                            {copiedId === p.id
-                              ? <Check className="h-3 w-3 text-green-400" />
-                              : <Copy className="h-3 w-3" />}
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-zinc-400 text-sm">{p.description || '—'}</TableCell>
-                      <TableCell>
-                        <Badge className="bg-blue-500/10 text-blue-300 border-0">{p.userCount}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-zinc-400">
-                        {new Date(p.createdAt).toLocaleDateString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {platforms.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
-                        No platforms yet. Create one to get started.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </Card>
-
-          {platforms.length > 0 && (
-            <p className="text-xs text-zinc-500 px-1">
-              Click any platform to view its integration guide.
-            </p>
-          )}
-        </div>
-
-        {/* Right column — create form */}
-        <div className="space-y-4 order-1 md:order-2">
-          <Card className="bg-zinc-950/50 border-zinc-800 h-fit">
-            <CardHeader>
-              <CardTitle className="text-lg text-zinc-50">Create Platform</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreate} className="space-y-4">
-                {createSuccess && (
-                  <div className="p-3 rounded-md bg-green-500/10 border border-green-500/20 text-green-400 text-sm">
-                    {createSuccess}
-                  </div>
-                )}
-                {createError && (
-                  <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                    {createError}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="plat-name" className="text-zinc-300">Platform Name</Label>
-                  <Input
-                    id="plat-name"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Vyntrise SMS"
-                    className="bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-600"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="plat-desc" className="text-zinc-300">
-                    Description <span className="text-zinc-500">(optional)</span>
-                  </Label>
-                  <Input
-                    id="plat-desc"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Brief description"
-                    className="bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-600"
-                  />
-                </div>
-                <label htmlFor="plat-self-reg" className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    id="plat-self-reg"
-                    type="checkbox"
-                    checked={allowSelfRegistration}
-                    onChange={(e) => setAllowSelfRegistration(e.target.checked)}
-                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-zinc-50"
-                  />
-                  <span className="text-sm text-zinc-300">Allow self-registration</span>
-                </label>
-                <Button
-                  type="submit"
-                  disabled={creating}
-                  className="w-full bg-zinc-50 text-zinc-950 hover:bg-zinc-200 font-semibold"
-                >
-                  {creating ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating...</>
-                  ) : 'Create Platform'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Quick tip card */}
-          <Card className="bg-zinc-950/50 border-zinc-800">
-            <CardContent className="pt-4 pb-4 space-y-2 text-xs text-zinc-500">
-              <p className="font-medium text-zinc-400">Quick setup</p>
-              <ol className="space-y-1.5 list-decimal list-inside">
-                <li>Create a platform above</li>
-                <li>Copy its ID from the table</li>
-                <li>Expand its integration guide</li>
-                <li>Follow the 4-step code walkthrough</li>
-              </ol>
-              <a
-                href="/admin/docs"
-                className="block pt-1 text-indigo-400 hover:text-indigo-300 underline"
-              >
-                Full integration docs →
-              </a>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {isSuperAdmin && (
+        <CreatePlatformDialog
+          open={open}
+          onOpenChange={(o) => {
+            setCreateOpen(o);
+            if (!o && params.get('new')) router.replace(pathname, { scroll: false });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-
+export default function PlatformsPage() {
+  return (
+    <Suspense>
+      <PlatformsView />
+    </Suspense>
+  );
+}

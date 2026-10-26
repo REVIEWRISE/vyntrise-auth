@@ -68,6 +68,34 @@ pnpm dev
 
 Backend runs on `http://localhost:3021`, frontend on `http://localhost:3001`.
 
+### Admin console access
+
+Platform admins see the platforms they administer. Super-admins see every platform and can
+create or delete platforms, disable accounts and manage anyone's sessions. Super-admin is granted
+only from the server, never through the API:
+
+```bash
+cd apps/backend
+npm run super-admin -- grant you@example.com     # development
+node dist/scripts/super-admin.js list            # inside the production container
+```
+
+### Backend tests
+
+The suite runs against a real Postgres and **truncates every table**, so it only runs against
+`TEST_DATABASE_URL`, and only if that database's name contains `test`:
+
+```bash
+docker run -d --name vyntrise-test-db -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=vyntrise_test -p 55433:5432 postgres:16-alpine
+
+cd apps/backend
+TEST_DATABASE_URL=postgresql://postgres:password@localhost:55433/vyntrise_test npm test
+```
+
+Migrations are applied automatically before the run. `TEST_VERBOSE=1` shows the app's console
+output. CI runs the same suite on every push and pull request.
+
 ---
 
 ## Environment Variables
@@ -94,8 +122,16 @@ OIDC_ISSUER=http://localhost:3020
 PORT=3021
 NODE_ENV=development
 
-# CORS - Allowed origins for cross-origin requests (comma-separated)
+# CORS - Allowed origins for cross-origin requests (comma-separated). Platforms can add their
+# own on their Security tab in the admin console.
 ALLOWED_ORIGINS=http://localhost:3001,http://localhost:3000
+
+# Login redirects. Each platform registers its redirect URIs in the admin console.
+# ALLOW_LOCALHOST_REDIRECT=true lets them include http://localhost in production builds.
+# LEGACY_REDIRECT_FALLBACK=false stops platforms with no redirect URIs from accepting any
+# https://*.vyntrise.com host (on by default until every platform is configured).
+# ALLOW_LOCALHOST_REDIRECT=false
+# LEGACY_REDIRECT_FALLBACK=true
 
 # Frontend (used to build email links)
 FRONTEND_URL=http://localhost:3001

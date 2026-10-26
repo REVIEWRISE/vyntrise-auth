@@ -1,5 +1,12 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../db/prisma';
+import { AdminRequest } from '../middlewares/admin.middleware';
+import {
+  invalidateOriginCache,
+  normalizeOrigins,
+  normalizeRedirectUris,
+} from '../services/platform-security.service';
 import { emailService, notify } from '../services/email.service';
 import { logActivity } from '../services/audit.service';
 import { createInvitation } from '../services/invite.service';
@@ -300,140 +307,219 @@ export const createInvite = async (req: Request, res: Response) => {
   }
 };
 
-export const getPlatforms = async (req: Request, res: Response) => {
+// The caller's identity for the console: who they are, whether they are a super-admin, and the
+// platforms they can administer. The frontend gates the whole admin area on this.
+export const getAdminMe = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
-
-    const adminAccess = await prisma.userPlatformAccess.findMany({
-      where: { userId, role: 'ADMIN' },
-      select: { platformId: true },
+    const ctx = (req as AdminRequest).admin!;
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { id: true, email: true, isSuperAdmin: true },
     });
-    const platformIds = adminAccess.map((a) => a.platformId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     const platforms = await prisma.platform.findMany({
-      where: { id: { in: platformIds } },
-      orderBy: { createdAt: 'desc' },
+      where: ctx.isSuperAdmin ? {} : { id: { in: ctx.adminPlatformIds } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
     });
 
-    // Get user counts separately to avoid _count issues with the driver adapter
-    const results = await Promise.all(
-      platforms.map(async (p) => {
-        const userCount = await prisma.userPlatformAccess.count({
-          where: { platformId: p.id },
-        });
-        return {
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          createdAt: p.createdAt,
-          userCount,
-        };
-      })
-    );
+    res.json({
+      ...user,
+      platforms: platforms.map((p) => ({
+        ...p,
+        // A super-admin may administer a platform without being a member of it.
+        role: ctx.adminPlatformIds.includes(p.id) ? 'ADMIN' : 'SUPER_ADMIN',
+      })),
+    });
+  } catch (error) {
+    console.error('getAdminMe error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
-    res.json(results);
+// One grouped query for every platform's member count, instead of a count per platform.
+async function memberCounts(platformIds: string[]): Promise<Map<string, number>> {
+  const groups = await prisma.userPlatformAccess.groupBy({
+    by: ['platformId'],
+    where: { platformId: { in: platformIds } },
+    _count: { _all: true },
+  });
+  return new Map(groups.map((g) => [g.platformId, g._count._all]));
+}
+
+export const getPlatforms = async (req: Request, res: Response) => {
+  try {
+    const ctx = (req as AdminRequest).admin!;
+
+    const platforms = await prisma.platform.findMany({
+      where: ctx.isSuperAdmin ? {} : { id: { in: ctx.adminPlatformIds } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const counts = await memberCounts(platforms.map((p) => p.id));
+
+    res.json(
+      platforms.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        allowSelfRegistration: p.allowSelfRegistration,
+        redirectUriCount: p.redirectUris.length,
+        createdAt: p.createdAt,
+        userCount: counts.get(p.id) ?? 0,
+      }))
+    );
   } catch (error) {
     console.error('getPlatforms error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
+async function platformDetail(id: string) {
+  const platform = await prisma.platform.findUnique({ where: { id } });
+  if (!platform) return null;
+
+  const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+  // Metadata only — the key itself is unrecoverable after the call that created it.
+  const inviteKey = await getActiveInviteKey(id);
+
+  return {
+    id: platform.id,
+    name: platform.name,
+    description: platform.description,
+    allowSelfRegistration: platform.allowSelfRegistration,
+    redirectUris: platform.redirectUris,
+    allowedOrigins: platform.allowedOrigins,
+    createdAt: platform.createdAt,
+    userCount,
+    inviteKey,
+  };
+}
+
+// Behind requirePlatformAdminParam: scoped to this specific platform, not "admin of any
+// platform" — otherwise an admin of platform A could read platform B by guessing its id.
 export const getPlatformById = async (req: Request, res: Response) => {
   try {
-    const id = String(req.params.id);
-    const userId = (req as any).user?.id;
-
-    // Scoped to this specific platform, not "admin of any platform" — otherwise an
-    // admin of platform A could read platform B's details just by guessing its id.
-    const access = await prisma.userPlatformAccess.findFirst({
-      where: { userId, platformId: id, role: 'ADMIN' },
-    });
-    if (!access) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required for this platform' });
-    }
-
-    const platform = await prisma.platform.findUnique({ where: { id } });
-    if (!platform) {
+    const detail = await platformDetail(String(req.params.id));
+    if (!detail) {
       return res.status(404).json({ message: 'Platform not found' });
     }
-
-    const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
-    // Metadata only — the key itself is unrecoverable after the call that created it.
-    const inviteKey = await getActiveInviteKey(id);
-
-    res.json({
-      id: platform.id,
-      name: platform.name,
-      description: platform.description,
-      allowSelfRegistration: platform.allowSelfRegistration,
-      createdAt: platform.createdAt,
-      userCount,
-      inviteKey,
-    });
+    res.json(detail);
   } catch (error) {
     console.error('getPlatformById error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
+function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+// Behind requirePlatformAdminParam, same scoping as getPlatformById. Every field is optional;
+// only those present in the body change.
 export const updatePlatformSettings = async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const userId = (req as any).user?.id;
+    const admin = (req as AdminRequest).admin!;
+    const userId = admin.userId;
+    const viaSuperAdmin = !admin.adminPlatformIds.includes(id);
+    const { name, description, allowSelfRegistration, redirectUris, allowedOrigins } = req.body ?? {};
 
-    // Scoped to this specific platform, not "admin of any platform" — same reasoning as
-    // getPlatformById: otherwise an admin of platform A could edit platform B by guessing its id.
-    const access = await prisma.userPlatformAccess.findFirst({
-      where: { userId, platformId: id, role: 'ADMIN' },
-    });
-    if (!access) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required for this platform' });
+    const previous = await prisma.platform.findUnique({ where: { id } });
+    if (!previous) {
+      return res.status(404).json({ message: 'Platform not found' });
     }
 
-    const { allowSelfRegistration } = req.body;
-    const previous = await prisma.platform.findUnique({ where: { id } });
+    const data: Prisma.PlatformUpdateInput = {};
 
-    const platform = await prisma.platform.update({
-      where: { id },
-      data: { allowSelfRegistration: !!allowSelfRegistration },
-    });
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ message: 'Platform name cannot be empty' });
+      }
+      const trimmed = name.trim();
+      if (trimmed !== previous.name) {
+        const clash = await prisma.platform.findUnique({ where: { name: trimmed } });
+        if (clash) return res.status(409).json({ message: 'A platform with that name already exists' });
+        data.name = trimmed;
+      }
+    }
+    if (description !== undefined) {
+      if (description !== null && typeof description !== 'string') {
+        return res.status(400).json({ message: 'Description must be a string' });
+      }
+      data.description = description?.trim() || null;
+    }
+    if (allowSelfRegistration !== undefined) {
+      data.allowSelfRegistration = !!allowSelfRegistration;
+    }
+    if (redirectUris !== undefined) {
+      const result = normalizeRedirectUris(redirectUris);
+      if (!result.ok) return res.status(400).json({ message: result.message });
+      data.redirectUris = result.values;
+    }
+    if (allowedOrigins !== undefined) {
+      const result = normalizeOrigins(allowedOrigins);
+      if (!result.ok) return res.status(400).json({ message: result.message });
+      data.allowedOrigins = result.values;
+    }
+
+    const platform = await prisma.platform.update({ where: { id }, data });
+
+    const base = {
+      platformId: id,
+      actorId: userId,
+      targetType: 'platform',
+      targetId: id,
+      req,
+    } as const;
+    const marker: Record<string, Prisma.InputJsonValue> = viaSuperAdmin ? { viaSuperAdmin: true } : {};
 
     // Opening a platform to public sign-up is a security-relevant change, so it needs the same
     // trail as platform and invite creation.
-    if (previous && previous.allowSelfRegistration !== platform.allowSelfRegistration) {
+    if (previous.allowSelfRegistration !== platform.allowSelfRegistration) {
       logActivity({
+        ...base,
         action: 'PLATFORM_SETTINGS_CHANGED',
-        platformId: id,
-        actorId: userId,
-        targetType: 'platform',
-        targetId: id,
         metadata: {
           setting: 'allowSelfRegistration',
           from: previous.allowSelfRegistration,
           to: platform.allowSelfRegistration,
+          ...marker,
+        },
+      });
+    }
+    if (previous.name !== platform.name || previous.description !== platform.description) {
+      logActivity({
+        ...base,
+        action: 'PLATFORM_SETTINGS_CHANGED',
+        metadata: {
+          setting: 'profile',
+          from: { name: previous.name, description: previous.description },
+          to: { name: platform.name, description: platform.description },
+          ...marker,
         },
       });
     }
 
-    const userCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
-    // Included so a settings change does not blank the key state the client is holding.
-    const inviteKey = await getActiveInviteKey(id);
+    const redirectsChanged = !sameList(previous.redirectUris, platform.redirectUris);
+    const originsChanged = !sameList(previous.allowedOrigins, platform.allowedOrigins);
+    if (redirectsChanged || originsChanged) {
+      const diff: Record<string, Prisma.InputJsonValue> = { ...marker };
+      if (redirectsChanged) diff.redirectUris = { from: previous.redirectUris, to: platform.redirectUris };
+      if (originsChanged) diff.allowedOrigins = { from: previous.allowedOrigins, to: platform.allowedOrigins };
+      logActivity({ ...base, action: 'PLATFORM_SECURITY_CHANGED', metadata: diff });
+    }
+    if (originsChanged) invalidateOriginCache();
 
-    res.json({
-      id: platform.id,
-      name: platform.name,
-      description: platform.description,
-      allowSelfRegistration: platform.allowSelfRegistration,
-      createdAt: platform.createdAt,
-      userCount,
-      inviteKey,
-    });
+    res.json(await platformDetail(id));
   } catch (error) {
     console.error('updatePlatformSettings error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
+// Super-admin only (see admin.routes). Creating platforms used to be open to any platform admin,
+// which let an admin of one tenant mint arbitrary new tenants.
 export const createPlatform = async (req: Request, res: Response) => {
   try {
     const { name, description, allowSelfRegistration } = req.body;
@@ -470,11 +556,109 @@ export const createPlatform = async (req: Request, res: Response) => {
       targetType: 'platform',
       targetId: platform.id,
       metadata: { name: platform.name },
+      req,
     });
 
     res.status(201).json(platform);
   } catch (error) {
     console.error('createPlatform error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Super-admin only, and only with the platform's exact name echoed back, so it cannot happen
+// from a stray click or a replayed request for a different platform. Memberships, invitations
+// and invite keys go with it; audit rows survive with platformId nulled (onDelete: SetNull).
+export const deletePlatform = async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const actorId = (req as any).user?.id ?? null;
+    const confirmName = req.body?.confirmName;
+
+    const platform = await prisma.platform.findUnique({ where: { id } });
+    if (!platform) {
+      return res.status(404).json({ message: 'Platform not found' });
+    }
+    if (typeof confirmName !== 'string' || confirmName !== platform.name) {
+      return res.status(400).json({ message: 'confirmName must match the platform name exactly' });
+    }
+
+    const memberCount = await prisma.userPlatformAccess.count({ where: { platformId: id } });
+
+    await prisma.$transaction([
+      prisma.invitation.deleteMany({ where: { platformId: id } }),
+      prisma.platformInviteKey.deleteMany({ where: { platformId: id } }),
+      prisma.userPlatformAccess.deleteMany({ where: { platformId: id } }),
+      prisma.platform.delete({ where: { id } }),
+    ]);
+
+    invalidateOriginCache();
+
+    // platformId null: the platform no longer exists, so the row would fail its foreign key.
+    // The id and name live on in metadata.
+    logActivity({
+      action: 'PLATFORM_DELETED',
+      platformId: null,
+      actorId,
+      targetType: 'platform',
+      targetId: id,
+      metadata: { platformId: id, name: platform.name, memberCount },
+      req,
+    });
+
+    res.json({ message: 'Platform deleted' });
+  } catch (error) {
+    console.error('deletePlatform error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Every key the platform has had, newest first, revoked ones included, for the keys tab.
+export const getPlatformInviteKeys = async (req: Request, res: Response) => {
+  try {
+    const keys = await prisma.platformInviteKey.findMany({
+      where: { platformId: String(req.params.id) },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        prefix: true,
+        createdAt: true,
+        lastUsedAt: true,
+        revokedAt: true,
+        createdBy: { select: { email: true } },
+      },
+    });
+    res.json(keys.map(({ createdBy, ...k }) => ({ ...k, createdByEmail: createdBy?.email ?? null })));
+  } catch (error) {
+    console.error('getPlatformInviteKeys error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Public metadata of the JWT signing keys. The private key is never selected.
+export const getSigningKeys = async (_req: Request, res: Response) => {
+  try {
+    const keys = await prisma.signingKey.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, kid: true, algorithm: true, isActive: true, createdAt: true, retiredAt: true },
+    });
+    res.json(keys);
+  } catch (error) {
+    console.error('getSigningKeys error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getSuperAdmins = async (_req: Request, res: Response) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { isSuperAdmin: true },
+      select: { id: true, email: true, disabledAt: true, lastLoginAt: true },
+      orderBy: { email: 'asc' },
+    });
+    res.json(admins);
+  } catch (error) {
+    console.error('getSuperAdmins error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

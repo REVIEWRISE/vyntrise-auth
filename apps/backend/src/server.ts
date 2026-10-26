@@ -13,6 +13,7 @@ import { authenticateJWT } from './middlewares/auth.middleware';
 import { assertRequiredEnv } from './config/env';
 import { reportEmailConfig } from './config/email';
 import { reportSigningKeys } from './services/signing-key.service';
+import { isPlatformOrigin } from './services/platform-security.service';
 
 dotenv.config();
 assertRequiredEnv();
@@ -46,11 +47,20 @@ app.use(cors({
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`CORS blocked request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    // Origins an admin has registered for a platform (Platform.allowedOrigins).
+    isPlatformOrigin(origin)
+      .then((allowed) => {
+        if (allowed) {
+          callback(null, true);
+        } else {
+          console.warn(`CORS blocked request from origin: ${origin}`);
+          callback(new Error('Not allowed by CORS'));
+        }
+      })
+      .catch(() => callback(new Error('Not allowed by CORS')));
   },
   credentials: true, // Allow cookies and authorization headers
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

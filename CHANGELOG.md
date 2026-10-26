@@ -4,6 +4,82 @@ All notable changes to the Vyntrise Auth project.
 
 ---
 
+## [1.5.0] - 2026-10-27
+
+### Features
+
+#### Admin console redesign
+
+The admin panel is rebuilt as a dark-first console with a light-mode toggle, a collapsible
+sidebar, breadcrumbs, a command palette (Ctrl/⌘ K, plus `g` then a letter to jump between
+sections), toasts, skeleton loading and a mobile layout.
+
+- **Overview**: active users, sign-ins and failed-sign-in rate, each with its change from the
+  previous period. Also charts of sign-in activity and growth, the top sources of failed sign-ins,
+  recent activity, and a per-platform breakdown for super-admins.
+- **Audit log**: filter by action, period, actor, target or IP, or search. Opens an event's full
+  detail in a drawer and exports to CSV. Filters are kept in the URL so a view can be shared.
+- **Users**: searchable, paginated table with status and role filters, plus bulk role changes and
+  removal.
+- **User 360**: one page per user showing memberships, active sessions (with revoke), an activity
+  timeline, resend verification, and disable/enable.
+- **Platforms**: card grid. Each platform's page has General, Security, API keys, Integrate and
+  Danger-zone tabs, and a history of invite keys.
+
+#### Super-admin tier
+
+`User.isSuperAdmin` grants control over every platform. It can only be granted from the server, by
+running `node dist/scripts/super-admin.js grant|revoke|list <email>` (`npm run super-admin` in
+development). There is no API for it. The following are now super-admin only:
+
+- creating and deleting platforms
+- the all-users list
+- viewing and revoking another user's sessions
+- disabling and enabling accounts
+- the System page (signing keys, list of super-admins)
+
+#### Disabled accounts
+
+Disabling an account deletes its sessions, so it is signed out at once. Sign-in, refresh and
+every authenticated request are refused. A disabled account's sign-in returns
+`403 ACCOUNT_DISABLED`, but only when the password is correct.
+
+#### Per-platform redirect URIs and CORS origins
+
+Each platform now lists its own redirect URIs and allowed origins on its Security tab. The login
+page asks `GET /api/auth/redirect-check` before it hands a token to a `redirectUrl`. A platform
+with no redirect URIs still uses the old `*.vyntrise.com` / localhost rule while
+`LEGACY_REDIRECT_FALLBACK` is unset or `true`. Set it to `false` once every platform is
+configured. Allowed origins are added to `ALLOWED_ORIGINS` for CORS.
+
+**Deploy note:** localhost redirects are now decided by the backend. Set
+`ALLOW_LOCALHOST_REDIRECT=true` on the **backend** (it is in `docker-compose.yml`) to keep
+localhost redirects working in production. The frontend build arg
+`NEXT_PUBLIC_ALLOW_LOCALHOST_REDIRECT` no longer has any effect.
+
+#### Sign-in telemetry
+
+Successful sign-ins are now audited (`LOGIN_SUCCEEDED`), and so are sign-ins denied for lack of
+platform access. Audit rows and sessions record the client IP and user agent, and failed sign-ins
+are attributed to the platform when it is known. Analytics start from this release.
+
+#### Backend test suite
+
+`npm test` in `apps/backend` runs 81 vitest + supertest tests against a real Postgres database.
+They cover who can access what, disabling accounts and sessions, sign-in logging, audit-log
+paging and CSV export, analytics, redirect and CORS rules, and deleting platforms. They run
+only against `TEST_DATABASE_URL`, and only when that database's name contains `test`. CI runs
+them in a new job that must pass before images are built. The Express app now lives in
+`src/app.ts` so tests can drive it without opening a port.
+
+### Migrations
+
+- `20261026120000_admin_super_admin_and_user_status`
+- `20261026130000_audit_ip_and_indexes`
+- `20261026140000_platform_security_config`
+
+---
+
 ## [1.4.2] - 2026-10-19
 
 ### Features
